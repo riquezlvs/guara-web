@@ -10,7 +10,7 @@ import { obterExtrato, ExtratoResponse, ItemExtrato } from "@/lib/api";
 
 export default function ExtratoPage() {
   const [extratoData, setExtratoData] = useState<ExtratoResponse["dados"] | null>(null);
-  const [isLoadingExtrato, setIsLoadingExtrato] = useState(false);
+  const [isLoadingExtrato, setIsLoadingExtrato] = useState(true);
   const [filterPill, setFilterPill] = useState("Todos");
   const [searchQuery, setSearchQuery] = useState("");
 
@@ -30,6 +30,14 @@ export default function ExtratoPage() {
 
   useEffect(() => {
     carregarExtrato();
+
+    const handleRefresh = () => {
+      carregarExtrato();
+    };
+    window.addEventListener("finances:refresh", handleRefresh);
+    return () => {
+      window.removeEventListener("finances:refresh", handleRefresh);
+    };
   }, [carregarExtrato]);
 
   const handleMudarMes = (delta: number) => {
@@ -162,12 +170,20 @@ export default function ExtratoPage() {
               <span className="text-[#737373] uppercase tracking-wider block text-[10px] font-medium">
                 Líquido no Mês
               </span>
-              <span className={`text-[14px] font-semibold tracking-tight ${
-                (extratoData?.liquidoNoMes || 0) >= 0 ? "text-emerald-700" : "text-rose-600"
-              }`}>
-                {(extratoData?.liquidoNoMes || 0) >= 0 ? "+" : ""}
-                R$ {(extratoData?.liquidoNoMes || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-              </span>
+              {isLoadingExtrato ? (
+                <div className="flex justify-end pt-1">
+                  <span className="material-symbols-outlined text-[16px] animate-spin text-[#737373]">
+                    progress_activity
+                  </span>
+                </div>
+              ) : (
+                <span className={`text-[14px] font-semibold tracking-tight ${
+                  (extratoData?.liquidoNoMes || 0) >= 0 ? "text-emerald-700" : "text-rose-600"
+                }`}>
+                  {(extratoData?.liquidoNoMes || 0) >= 0 ? "+" : ""}
+                  R$ {(extratoData?.liquidoNoMes || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+              )}
             </div>
           </div>
 
@@ -182,9 +198,17 @@ export default function ExtratoPage() {
                   Entradas
                 </span>
               </div>
-              <span className="text-[16px] font-semibold text-[#0a0a0a]">
-                R$ {(extratoData?.totalEntradas || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-              </span>
+              <div className="min-h-[24px] flex items-center">
+                {isLoadingExtrato ? (
+                  <span className="material-symbols-outlined text-[16px] animate-spin text-[#737373]">
+                    progress_activity
+                  </span>
+                ) : (
+                  <span className="text-[16px] font-semibold text-[#0a0a0a]">
+                    R$ {(extratoData?.totalEntradas || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                )}
+              </div>
             </div>
             <div className="p-3 rounded-[18px] bg-[#fafafa] border border-black/[0.04] flex flex-col gap-0.5">
               <div className="flex items-center gap-1.5 text-[#737373]">
@@ -195,9 +219,17 @@ export default function ExtratoPage() {
                   Saídas
                 </span>
               </div>
-              <span className="text-[16px] font-semibold text-[#0a0a0a]">
-                R$ {(extratoData?.totalSaidas || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-              </span>
+              <div className="min-h-[24px] flex items-center">
+                {isLoadingExtrato ? (
+                  <span className="material-symbols-outlined text-[16px] animate-spin text-[#737373]">
+                    progress_activity
+                  </span>
+                ) : (
+                  <span className="text-[16px] font-semibold text-[#0a0a0a]">
+                    R$ {(extratoData?.totalSaidas || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                  </span>
+                )}
+              </div>
             </div>
           </div>
         </Card>
@@ -232,7 +264,19 @@ export default function ExtratoPage() {
         </div>
 
         {/* Transaction Items Grouped by Date */}
-        {filtradas.length === 0 ? (
+        {isLoadingExtrato ? (
+          <Card className="rounded-[24px] border border-black/5 bg-white p-12 text-center flex flex-col items-center justify-center gap-3">
+            <span className="material-symbols-outlined text-[32px] text-[#737373] animate-spin">
+              progress_activity
+            </span>
+            <span className="text-[14px] font-medium text-[#0a0a0a]">
+              Carregando lançamentos do extrato...
+            </span>
+            <span className="text-[12px] text-[#737373] max-w-xs">
+              Buscando e agrupando transações reais do banco de dados
+            </span>
+          </Card>
+        ) : filtradas.length === 0 ? (
           <Card className="rounded-[24px] border border-black/5 bg-white p-8 text-center flex flex-col items-center justify-center gap-2">
             <span className="material-symbols-outlined text-[32px] text-[#737373]">
               receipt_long
@@ -341,7 +385,16 @@ export default function ExtratoPage() {
         {/* End of List Indicator */}
         <div className="py-3 text-center flex flex-col items-center justify-center gap-1.5">
           <span className="text-[11px] text-[#737373]">
-            Total de {extratoData?.totalLancamentos || 0} movimentações sincronizadas com o banco
+            {isLoadingExtrato ? (
+              <span className="inline-flex items-center gap-1.5 animate-pulse">
+                <span className="material-symbols-outlined text-[13px] animate-spin">
+                  progress_activity
+                </span>
+                Sincronizando com o banco...
+              </span>
+            ) : (
+              `Total de ${extratoData?.totalLancamentos || 0} movimentações sincronizadas com o banco`
+            )}
           </span>
         </div>
       </div>

@@ -25,6 +25,14 @@ export default function CartoesPage() {
 
   useEffect(() => {
     carregarDados();
+
+    const handleRefresh = () => {
+      carregarDados();
+    };
+    window.addEventListener("finances:refresh", handleRefresh);
+    return () => {
+      window.removeEventListener("finances:refresh", handleRefresh);
+    };
   }, [carregarDados]);
 
   const faturas = dashboardData?.saldo?.safeSummary?.openCreditInvoices || 0;
@@ -45,9 +53,20 @@ export default function CartoesPage() {
             </span>
           </div>
           <div className="flex items-baseline gap-2">
-            <h1 className="text-[32px] text-[#0a0a0a] font-semibold tracking-[-0.03em] leading-none">
-              R$ {passivos.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-            </h1>
+            {isLoading ? (
+              <div className="flex items-center gap-2 h-8 text-[#737373]">
+                <span className="material-symbols-outlined text-[20px] animate-spin">
+                  progress_activity
+                </span>
+                <span className="text-[14px] font-medium text-[#737373] animate-pulse">
+                  Carregando faturas...
+                </span>
+              </div>
+            ) : (
+              <h1 className="text-[32px] text-[#0a0a0a] font-semibold tracking-[-0.03em] leading-none">
+                R$ {passivos.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+              </h1>
+            )}
           </div>
           <p className="text-[12px] text-[#737373]">
             Total de faturas e compromissos abertos no ciclo
