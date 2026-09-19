@@ -359,11 +359,19 @@ export default function Home() {
         </div>
 
         {/* 3. Consolidated Net Worth Card */}
-        <div className="w-full rounded-[24px] bg-white p-5 border border-black/5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex flex-col gap-4">
+        <Link
+          href="/investimentos"
+          className="w-full rounded-[24px] bg-white p-5 border border-black/5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] hover:border-black/20 hover:shadow-md transition-all active:scale-[0.99] flex flex-col gap-4 group cursor-pointer"
+        >
           <div className="flex items-center justify-between">
-            <span className="text-[12px] uppercase tracking-[0.05em] text-[#737373] font-medium">
-              Patrimônio Líquido
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[12px] uppercase tracking-[0.05em] text-[#737373] font-medium group-hover:text-[#0a0a0a] transition-colors">
+                Patrimônio Líquido
+              </span>
+              <span className="material-symbols-outlined text-[15px] text-[#737373] group-hover:text-[#0a0a0a] group-hover:translate-x-0.5 transition-all">
+                chevron_right
+              </span>
+            </div>
             <span className="text-[11px] font-mono text-[#737373] bg-[#f5f5f5] px-2 py-0.5 rounded-[12px]">
               {isLoading
                 ? "..."
@@ -434,7 +442,7 @@ export default function Home() {
               </div>
             </div>
           </div>
-        </div>
+        </Link>
 
         {/* 4. Fluxo Mensal & Evolução (Area / Line Chart) */}
         <div className="w-full rounded-[24px] bg-white p-5 border border-black/5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex flex-col gap-4">

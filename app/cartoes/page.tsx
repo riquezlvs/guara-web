@@ -300,15 +300,27 @@ export default function CartoesPage() {
 
           {/* Active Card Status Micro-Bar */}
           <div className="flex items-center justify-between px-1 text-[12px]">
-            <div className="flex items-center gap-1.5">
-              <span className="w-2 h-2 rounded-full bg-[#0a0a0a]"></span>
-              <span className="text-[#0a0a0a] font-medium">
-                {cartaoAtual?.is_virtual ? "Virtual • Uso Único/Online" : "Físico • Ativo"}
+            <div className="flex items-center gap-2">
+              <div className="flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#0a0a0a]"></span>
+                <span className="text-[#0a0a0a] font-medium">
+                  {cartaoAtual?.is_virtual ? "Virtual • Uso Único" : "Físico • Ativo"}
+                </span>
+              </div>
+              <span className="text-[#737373]">•</span>
+              <span className="text-[#737373]">
+                Limite: R$ {formatarMoeda(cartaoAtual?.credit_limit)}
               </span>
             </div>
-            <span className="text-[#737373]">
-              Limite Total: R$ {formatarMoeda(cartaoAtual?.credit_limit)}
-            </span>
+            {cartaoAtual && (
+              <Link
+                href={`/cartoes/editar/${encodeURIComponent(cartaoAtual.id)}`}
+                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] bg-white shadow-[0_0_0_1px_rgba(229,229,229,1)] text-[#0a0a0a] text-[12px] font-medium hover:bg-[#fafafa] active:scale-95 transition-all"
+              >
+                <span className="material-symbols-outlined text-[14px]">edit</span>
+                <span>Editar Cartão</span>
+              </Link>
+            )}
           </div>
         </section>
 

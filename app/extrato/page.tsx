@@ -50,6 +50,20 @@ export default function ExtratoPage() {
 
   const transacoes = extratoData?.itens || [];
 
+  // Função utilitária para obter a chave única da compra completa caso seja parcelada
+  const getInstallmentBaseKey = (t: ItemExtrato) => {
+    if (t.installment_group_id) {
+      return `group-${t.installment_group_id}`;
+    }
+    if (t.installment_total && t.installment_total > 1) {
+      // Normaliza removendo sufixos como (1/10), 1/10 etc.
+      const descBase = t.description.replace(/\s*\(?\d+\/\d+\)?\s*$/i, "").trim().toLowerCase();
+      return `desc-${descBase}-${t.installment_total}-${t.payment_method}`;
+    }
+    return null;
+  };
+
+  // Filtragem inicial (tipo, método de pagamento e busca)
   const filtradas = transacoes.filter((item: ItemExtrato) => {
     if (filterPill === "Entradas" && item.entry_type !== "income") return false;
     if (filterPill === "Saídas" && item.entry_type !== "expense") return false;
@@ -66,8 +80,24 @@ export default function ExtratoPage() {
     return true;
   });
 
+  // Mostra a compra completa apenas uma vez no extrato (mantendo a parcela deste mês e o valor da parcela)
+  const dedupedMap = new Map<string, ItemExtrato>();
+  const itensUnicos: ItemExtrato[] = [];
+
+  filtradas.forEach((item: ItemExtrato) => {
+    const installmentKey = getInstallmentBaseKey(item);
+    if (installmentKey) {
+      if (!dedupedMap.has(installmentKey)) {
+        dedupedMap.set(installmentKey, item);
+        itensUnicos.push(item);
+      }
+    } else {
+      itensUnicos.push(item);
+    }
+  });
+
   const grupos: { [data: string]: ItemExtrato[] } = {};
-  filtradas.forEach((t: ItemExtrato) => {
+  itensUnicos.forEach((t: ItemExtrato) => {
     const dataIso = t.occurred_at ? t.occurred_at.slice(0, 10) : "outros";
     if (!grupos[dataIso]) grupos[dataIso] = [];
     grupos[dataIso].push(t);
@@ -323,6 +353,11 @@ export default function ExtratoPage() {
                       ? new Date(t.occurred_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })
                       : "";
                     const categoria = t.categories?.name || "Geral";
+                    const isParcelado = Boolean(t.installment_total && t.installment_total > 1);
+                    const descricaoLimpa = isParcelado
+                      ? t.description.replace(/\s*\(?\d+\/\d+\)?\s*$/i, "").trim()
+                      : t.description;
+
                     return (
                       <Link
                         key={t.display_id}
@@ -346,7 +381,7 @@ export default function ExtratoPage() {
                           <div className="flex flex-col min-w-0">
                             <div className="flex items-center gap-1.5">
                               <span className="text-[13px] font-medium text-[#0a0a0a] truncate">
-                                {t.description}
+                                {descricaoLimpa}
                               </span>
                               <Badge
                                 variant="secondary"
@@ -361,15 +396,15 @@ export default function ExtratoPage() {
                           </div>
                         </div>
 
-                        <div className="text-right pl-2 shrink-0">
+                        <div className="text-right pl-2 shrink-0 flex flex-col items-end">
                           <span className={`text-[13px] font-semibold ${
                             isIncome ? "text-emerald-600" : "text-[#0a0a0a]"
                           }`}>
                             {isIncome ? "+" : "-"}R$ {Number(t.total_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                           </span>
-                          {t.installment_total && t.installment_number && (
-                            <span className="block text-[10px] text-[#737373]">
-                              {t.installment_number}/{t.installment_total}x
+                          {isParcelado && (
+                            <span className="inline-flex items-center gap-1 text-[10px] text-[#737373] bg-[#f5f5f5] px-1.5 py-0.5 rounded-[6px] font-mono mt-0.5">
+                              Parcela {t.installment_number || 1}/{t.installment_total}x
                             </span>
                           )}
                         </div>

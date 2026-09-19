@@ -82,6 +82,13 @@ export default function TransactionDetailsPage() {
   const accountName = transaction.accounts?.name || "Conta padrão";
   const payment = paymentLabel(transaction.payment_method);
 
+  const isParcelado = Boolean(transaction.installment_total && transaction.installment_total > 1);
+  const valorParcela = Number(transaction.total_amount);
+  const valorTotalCompra = isParcelado ? valorParcela * (transaction.installment_total || 1) : valorParcela;
+  const descricaoExibida = isParcelado
+    ? transaction.description.replace(/\s*\(?\d+\/\d+\)?\s*$/i, "").trim()
+    : transaction.description;
+
   const showToast = (message: string) => {
     setToast(message);
     window.setTimeout(() => setToast(""), 2800);
@@ -123,12 +130,27 @@ export default function TransactionDetailsPage() {
               {isIncome ? "arrow_downward" : "restaurant"}
             </span>
           </div>
-          <h1 className="text-[19px] leading-7 font-semibold tracking-tight">{transaction.description}</h1>
-          <p className="text-[12px] text-[#737373] mt-0.5 mb-4">{category} &amp; Gastronomia Urbana</p>
-          <p className={`text-[36px] leading-10 font-semibold tracking-tight mb-5 ${isIncome ? "text-emerald-600" : "text-[#0a0a0a]"}`}>
-            {isIncome ? "+" : "-"}R$ {formatCurrency(Number(transaction.total_amount))}
-          </p>
+          <h1 className="text-[19px] leading-7 font-semibold tracking-tight">{descricaoExibida}</h1>
+          <p className="text-[12px] text-[#737373] mt-0.5 mb-3">{category} • Lançamento</p>
+          
+          <div className="flex flex-col items-center mb-5">
+            <p className={`text-[36px] leading-10 font-semibold tracking-tight ${isIncome ? "text-emerald-600" : "text-[#0a0a0a]"}`}>
+              {isIncome ? "+" : "-"}R$ {formatCurrency(valorParcela)}
+            </p>
+            {isParcelado && (
+              <span className="text-[12px] text-[#737373] mt-1 font-medium">
+                Valor desta parcela ({transaction.installment_number || 1} de {transaction.installment_total}x)
+              </span>
+            )}
+          </div>
+
           <div className="flex flex-wrap justify-center gap-1.5 mb-4">
+            {isParcelado && (
+              <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#0a0a0a] text-white text-[11px] font-medium">
+                <span className="material-symbols-outlined text-[14px]">view_timeline</span>
+                Compra Parcelada em {transaction.installment_total}x
+              </span>
+            )}
             <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#fafafa] text-[11px] font-medium">
               <span className="w-1.5 h-1.5 rounded-full bg-[#0a0a0a]" />
               {category} &amp; {payment}
@@ -137,16 +159,47 @@ export default function TransactionDetailsPage() {
               <span className="material-symbols-outlined text-[14px]">check_circle</span>
               Confirmado • {payment}
             </span>
-            <span className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#f5f5f5] text-[11px] font-medium">
-              <span className="material-symbols-outlined text-[14px]">psychology</span>
-              IA 99% confiança
-            </span>
           </div>
           <div className="flex items-center gap-1.5 text-[12px] text-[#737373]">
             <span className="material-symbols-outlined text-[16px]">schedule</span>
             {formatDate(transaction.occurred_at)} às {new Date(transaction.occurred_at).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}
           </div>
         </section>
+
+        {/* Informações detalhadas do parcelamento */}
+        {isParcelado && (
+          <section className="rounded-[24px] bg-white shadow-sm p-5 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-[#737373] uppercase tracking-[0.14em]">
+                Plano de Parcelamento
+              </span>
+              <span className="text-[11px] font-medium text-[#0a0a0a] bg-[#fafafa] px-2 py-0.5 rounded-full">
+                {transaction.installment_number || 1}ª de {transaction.installment_total} parcelas
+              </span>
+            </div>
+            
+            <div className="p-3.5 rounded-2xl bg-[#fafafa] space-y-2 text-[12px]">
+              <div className="flex justify-between">
+                <span className="text-[#737373]">Valor total da compra</span>
+                <span className="font-semibold text-[#0a0a0a]">
+                  R$ {formatCurrency(valorTotalCompra)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#737373]">Valor da parcela atual</span>
+                <span className="font-semibold text-[#0a0a0a]">
+                  R$ {formatCurrency(valorParcela)}
+                </span>
+              </div>
+              <div className="flex justify-between">
+                <span className="text-[#737373]">Quantidade total de parcelas</span>
+                <span className="font-mono text-[#0a0a0a]">
+                  {transaction.installment_total}x
+                </span>
+              </div>
+            </div>
+          </section>
+        )}
 
         <section className="rounded-[24px] bg-white shadow-sm p-5 flex flex-col gap-4">
           <div className="flex items-center justify-between">

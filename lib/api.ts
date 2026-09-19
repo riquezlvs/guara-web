@@ -264,6 +264,7 @@ export interface ItemExtrato {
   raw_input?: string;
   installment_number?: number | null;
   installment_total?: number | null;
+  installment_group_id?: string | null;
   categories?: { id: number; name: string } | null;
   accounts?: { id: string; name: string; type: string } | null;
 }
@@ -335,6 +336,7 @@ export interface CartaoItem {
 }
 
 export interface NovoCartaoInput {
+  id?: string;
   name: string;
   closing_day: number;
   due_day?: number;
@@ -386,6 +388,203 @@ export async function cadastrarCartao(dados: NovoCartaoInput): Promise<{ sucesso
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.mensagem || `Erro ao cadastrar cartão: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export interface AlocacaoItem {
+  id: string;
+  name: string;
+  subtitle: string;
+  value: number;
+  percentage: number;
+  color: string;
+  badge: string;
+}
+
+export interface InstituicaoItem {
+  id: string;
+  name: string;
+  type: string;
+  sigla: string;
+  balance: number;
+  subtitle: string;
+  monthlyVariation: string;
+}
+
+export interface EvolucaoPeriodo {
+  pontos: Array<{ x: number; y: number; label: string; valor: number }>;
+  pathD: string;
+  labels: string[];
+}
+
+export interface InvestimentosData {
+  patrimonioTotal: number;
+  variacaoMensalPct: number;
+  variacaoMensalValor: number;
+  diagnostico: {
+    titulo: string;
+    badge: string;
+    percentualCdi: number;
+    aporteMensalSugerido: number;
+    metaValor: number;
+    mesesAtingirMeta: number;
+    mensagem: string;
+  };
+  alocacao: AlocacaoItem[];
+  instituicoes: InstituicaoItem[];
+  evolucaoHistorica: {
+    '1M': EvolucaoPeriodo;
+    '6M': EvolucaoPeriodo;
+    '1A': EvolucaoPeriodo;
+    'TUDO': EvolucaoPeriodo;
+  };
+  totalContas: number;
+}
+
+export interface InvestimentosResponse {
+  sucesso: boolean;
+  dados: InvestimentosData;
+  mensagem?: string;
+}
+
+export interface NovoAtivoInput {
+  ticker: string;
+  institution: string;
+  assetClass: 'Renda Fixa' | 'Ações / FIIs' | 'Cripto' | 'Fundos / Outros';
+  quantity: number;
+  unitPrice: number;
+  operationDate?: string;
+  yieldRate?: string;
+}
+
+export interface ExtratoInvestimentoItem {
+  id: string | number;
+  ticker: string;
+  title: string;
+  type: 'Aporte' | 'Dividendo' | 'Compra Ações' | 'JCP' | 'Resgate';
+  time: string;
+  institution: string;
+  category: string;
+  detail: string;
+  amount: number;
+  status: string;
+  date: string;
+  monthGroup: string;
+}
+
+export interface ExtratoInvestimentosResponse {
+  sucesso: boolean;
+  dados: {
+    mesAno: string;
+    rotuloMes: string;
+    resumoMes: {
+      totalAportado: number;
+      variacaoVsMesAnterior: string;
+      proventos: number;
+      proventosQtd: number;
+      rentabilidadePct: number;
+      rentabilidadeEstimada: number;
+    };
+    insight: {
+      titulo: string;
+      tempo: string;
+      texto: string;
+    };
+    grupos: Record<string, ExtratoInvestimentoItem[]>;
+    totalItens: number;
+  };
+  mensagem?: string;
+}
+
+/**
+ * Obtém os dados consolidados da carteira de investimentos e patrimônio líquido
+ */
+export async function obterInvestimentos(): Promise<InvestimentosResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/investimentos`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error(`Erro ao obter investimentos: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Cadastra um novo ativo de investimento no backend
+ */
+export async function cadastrarAtivo(
+  dados: NovoAtivoInput
+): Promise<{ sucesso: boolean; dados: any; mensagem: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/investimentos/ativos`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(dados),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao cadastrar ativo: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Ajusta o saldo de uma instituição/conta de investimento
+ */
+export async function ajustarSaldoInvestimento(
+  dados: { accountId?: string; name?: string; novoSaldo: number }
+): Promise<{ sucesso: boolean; dados: any; mensagem: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/investimentos/ajustar-saldo`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(dados),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao ajustar saldo: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Obtém o extrato especializado em investimentos, proventos e aportes
+ */
+export async function obterExtratoInvestimentos(params?: {
+  mesAno?: string;
+  tipo?: string;
+  busca?: string;
+}): Promise<ExtratoInvestimentosResponse> {
+  const query = new URLSearchParams();
+  if (params?.mesAno) query.set('mes', params.mesAno);
+  if (params?.tipo) query.set('tipo', params.tipo);
+  if (params?.busca) query.set('busca', params.busca);
+
+  const qs = query.toString() ? `?${query.toString()}` : '';
+  const res = await fetch(`${API_BASE_URL}/api/investimentos/extrato${qs}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error(`Erro ao obter extrato de investimentos: ${res.status}`);
   }
 
   return res.json();
