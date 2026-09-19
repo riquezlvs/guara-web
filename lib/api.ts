@@ -42,14 +42,7 @@ export interface DashboardResponse {
         balance: number;
       }>;
     };
-    recentes?: Array<{
-      display_id: number;
-      description: string;
-      total_amount: number;
-      payment_method: string;
-      occurred_at: string;
-      categories?: { name: string };
-    }>;
+    recentes?: DashboardRecentItem[];
     patrimonio?: {
       totalNetWorth: number;
       liquidAssets: {
@@ -94,6 +87,18 @@ export interface DashboardResponse {
     }>;
   };
   mensagem?: string;
+}
+
+export interface DashboardRecentItem {
+  display_id: number;
+  description: string;
+  total_amount: number;
+  payment_method: string;
+  occurred_at: string;
+  entry_type?: 'expense' | 'income' | 'yield' | 'transfer';
+  installment_number?: number | null;
+  installment_total?: number | null;
+  categories?: { name: string };
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';

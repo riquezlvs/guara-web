@@ -6,7 +6,44 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Separator } from "@/components/ui/separator";
 import Link from "next/link";
-import { obterDashboard, DashboardResponse } from "@/lib/api";
+import { obterDashboard, DashboardResponse, DashboardRecentItem } from "@/lib/api";
+
+type RecentItemGroup = DashboardRecentItem & {
+  installmentNumbers: number[];
+  installmentTotal?: number;
+};
+
+function agruparAtividadesRecentes(items: DashboardRecentItem[]): RecentItemGroup[] {
+  const groups = new Map<string, RecentItemGroup>();
+
+  items.forEach((item) => {
+    const hasInstallments = Boolean(item.installment_total && item.installment_total > 1);
+    const category = item.categories?.name || "Geral";
+    const normalizedDescription = item.description.trim().toLocaleLowerCase();
+    const key = hasInstallments
+      ? `installment:${normalizedDescription}:${category}:${item.payment_method}`
+      : `single:${item.display_id}`;
+    const current = groups.get(key);
+
+    if (!current) {
+      groups.set(key, {
+        ...item,
+        installmentNumbers: item.installment_number ? [item.installment_number] : [],
+        installmentTotal: item.installment_total || undefined,
+      });
+      return;
+    }
+
+    if (item.installment_number && !current.installmentNumbers.includes(item.installment_number)) {
+      current.installmentNumbers.push(item.installment_number);
+    }
+  });
+
+  return Array.from(groups.values()).map((item) => ({
+    ...item,
+    installmentNumbers: item.installmentNumbers.sort((a, b) => a - b),
+  }));
+}
 
 export default function Home() {
   const [dashboardData, setDashboardData] = useState<DashboardResponse["data"] | null>(null);
@@ -227,7 +264,7 @@ export default function Home() {
           </div>
           <Card className="rounded-[24px] border border-black/5 bg-white shadow-[0_1px_3px_rgba(0,0,0,0.06)] overflow-hidden p-0 gap-0">
             {dashboardData?.recentes && dashboardData.recentes.length > 0 ? (
-              dashboardData.recentes.slice(0, 5).map((item, idx) => {
+              agruparAtividadesRecentes(dashboardData.recentes).slice(0, 5).map((item, idx, visibleItems) => {
                 const dataFormatada = new Date(item.occurred_at).toLocaleDateString("pt-BR", {
                   day: "2-digit",
                   month: "short",
@@ -261,15 +298,19 @@ export default function Home() {
                             </Badge>
                           </div>
                           <span className="text-[12px] text-[#737373]">
-                            {dataFormatada} via {item.payment_method?.replace("_", " ") || "Transação"}
+                            {item.installmentTotal && item.installmentNumbers.length > 0
+                              ? `Parcelas ${item.installmentNumbers.join(", ")} de ${item.installmentTotal} • `
+                              : `${dataFormatada} via `}
+                            {item.payment_method?.replace("_", " ") || "Transação"}
                           </span>
                         </div>
                       </div>
-                      <span className="text-[14px] font-semibold text-[#0a0a0a] whitespace-nowrap pl-2">
-                        -R$ {Number(item.total_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      <span className="text-right text-[14px] font-semibold text-[#0a0a0a] whitespace-nowrap pl-2">
+                        <span className="block">-R$ {Number(item.total_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</span>
+                        {item.installmentTotal && <span className="block text-[10px] font-normal text-[#737373]">por parcela</span>}
                       </span>
                     </div>
-                    {idx < Math.min(dashboardData.recentes!.length, 5) - 1 && (
+                    {idx < visibleItems.length - 1 && (
                       <Separator className="bg-[#e5e5e5]" />
                     )}
                   </div>
