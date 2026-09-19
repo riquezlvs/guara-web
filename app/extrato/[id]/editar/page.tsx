@@ -1,29 +1,79 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { obterExtrato, ItemExtrato } from "@/lib/api";
 
 export default function EditarLancamentoPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
 
+  const [isLoading, setIsLoading] = useState(true);
+  const [transaction, setTransaction] = useState<ItemExtrato | null>(null);
+
   // Form states initialized with transaction details
   const [entryType, setEntryType] = useState<"expense" | "income">("expense");
-  const [amount, setAmount] = useState("45,00");
-  const [merchant, setMerchant] = useState("Restaurante da Esquina");
-  const [txDate, setTxDate] = useState("24/10/2024");
-  const [txTime, setTxTime] = useState("13:24:18");
-  const [notes, setNotes] = useState(
-    "Almoço de equipe após reunião de alinhamento trimestral com time de produto."
-  );
-  const [tags, setTags] = useState<string[]>(["#Almoço", "#Trabalho", "#Reembolsável"]);
+  const [amount, setAmount] = useState("");
+  const [merchant, setMerchant] = useState("");
+  const [txDate, setTxDate] = useState("");
+  const [txTime, setTxTime] = useState("");
+  const [notes, setNotes] = useState("");
+  const [tags, setTags] = useState<string[]>([]);
   const [ignoreStats, setIgnoreStats] = useState(false);
-  const [reimbursable, setReimbursable] = useState(true);
+  const [reimbursable, setReimbursable] = useState(false);
 
   // Modal / Confirm delete state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadTransaction() {
+      setIsLoading(true);
+      try {
+        const response = await obterExtrato();
+        const found = response.dados?.itens.find(
+          (item) => String(item.display_id) === params.id
+        );
+        if (found && mounted) {
+          setTransaction(found);
+          setEntryType(found.entry_type === "income" ? "income" : "expense");
+          setAmount(
+            Number(found.total_amount).toLocaleString("pt-BR", {
+              minimumFractionDigits: 2,
+              maximumFractionDigits: 2,
+            })
+          );
+          setMerchant(found.description || "");
+
+          if (found.occurred_at) {
+            const dt = new Date(found.occurred_at);
+            setTxDate(dt.toLocaleDateString("pt-BR"));
+            setTxTime(dt.toLocaleTimeString("pt-BR"));
+          } else {
+            setTxDate(new Date().toLocaleDateString("pt-BR"));
+            setTxTime(new Date().toLocaleTimeString("pt-BR"));
+          }
+
+          setNotes(found.observation || "Lançamento sincronizado com o seu banco.");
+          setTags(["#Auditoria", `#${found.categories?.name || "Geral"}`]);
+        }
+      } catch (err) {
+        console.warn("Erro ao buscar detalhes da transação para edição:", err);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadTransaction();
+    return () => {
+      mounted = false;
+    };
+  }, [params.id]);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -62,6 +112,76 @@ export default function EditarLancamentoPage() {
       }
     }
   };
+
+  if (isLoading) {
+    return (
+      <div className="bg-canvas font-sans text-body-md text-on-surface antialiased flex flex-col min-h-screen">
+        <header className="fixed top-0 inset-x-0 z-50 bg-canvas/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] pt-safe">
+          <div className="h-14 px-4 max-w-xl mx-auto flex items-center justify-between">
+            <button
+              aria-label="Cancelar edição"
+              className="h-11 px-2 -ml-2 flex items-center gap-1 text-mid-gray hover:text-ink transition-colors rounded-lg"
+              onClick={() => router.back()}
+              type="button"
+            >
+              <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+              <span className="text-[14px] font-medium">Cancelar</span>
+            </button>
+            <h1 className="text-[18px] leading-[26px] font-semibold text-ink truncate px-2 text-center flex-1">
+              Editar Lançamento
+            </h1>
+            <div className="w-11" />
+          </div>
+        </header>
+        <main className="flex-1 flex flex-col items-center justify-center min-h-[60vh] text-[#737373] pt-14">
+          <span className="material-symbols-outlined text-[32px] animate-spin mb-2">
+            progress_activity
+          </span>
+          <span className="text-[14px]">Carregando lançamento...</span>
+        </main>
+      </div>
+    );
+  }
+
+  if (!transaction) {
+    return (
+      <div className="bg-canvas font-sans text-body-md text-on-surface antialiased flex flex-col min-h-screen">
+        <header className="fixed top-0 inset-x-0 z-50 bg-canvas/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] pt-safe">
+          <div className="h-14 px-4 max-w-xl mx-auto flex items-center justify-between">
+            <button
+              aria-label="Voltar"
+              className="h-11 px-2 -ml-2 flex items-center gap-1 text-mid-gray hover:text-ink transition-colors rounded-lg"
+              onClick={() => router.back()}
+              type="button"
+            >
+              <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+              <span className="text-[14px] font-medium">Voltar</span>
+            </button>
+            <h1 className="text-[18px] leading-[26px] font-semibold text-ink truncate px-2 text-center flex-1">
+              Editar Lançamento
+            </h1>
+            <div className="w-11" />
+          </div>
+        </header>
+        <main className="flex-1 flex flex-col items-center justify-center px-4 pt-20 text-center">
+          <div className="w-14 h-14 rounded-full bg-[#f5f5f5] flex items-center justify-center text-[#737373] mb-3">
+            <span className="material-symbols-outlined text-[28px]">search_off</span>
+          </div>
+          <h3 className="text-[16px] font-semibold text-ink">Lançamento não encontrado</h3>
+          <p className="text-[13px] text-mid-gray mt-1 mb-4">
+            Não foi possível encontrar este lançamento para edição.
+          </p>
+          <button
+            onClick={() => router.push("/extrato")}
+            className="px-5 py-2.5 rounded-full bg-ink text-paper text-[13px] font-medium"
+            type="button"
+          >
+            Ir para o Extrato
+          </button>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="bg-canvas font-sans text-body-md text-on-surface antialiased flex flex-col min-h-screen">
@@ -194,7 +314,7 @@ export default function EditarLancamentoPage() {
                 <span className="text-[12px] uppercase text-mid-gray tracking-wider font-medium">
                   Identificação &amp; Origem
                 </span>
-                <span className="text-[12px] text-mid-gray">ID #TX-89240</span>
+                <span className="text-[12px] text-mid-gray">ID #{transaction.display_id}</span>
               </div>
 
               {/* Estabelecimento */}
@@ -218,7 +338,7 @@ export default function EditarLancamentoPage() {
                   </span>
                 </div>
                 <span className="text-[12px] text-mid-gray px-1">
-                  Razão Social: Alimentação &amp; Gastronomia Urbana Ltda. (CNPJ 48.910.112/0001-44)
+                  Identificador original: {transaction.description}
                 </span>
               </div>
 
@@ -231,22 +351,29 @@ export default function EditarLancamentoPage() {
                   aria-label="Alterar categoria de Alimentação e Restaurante"
                   className="w-full p-3 bg-canvas hover:bg-surface-container active:scale-[0.99] rounded-[18px] flex items-center justify-between gap-2 transition-all text-left"
                   type="button"
-                  onClick={() => showToast("Categoria classificada por IA")}
+                  onClick={() => showToast("Categoria classificada")}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
                     <div className="w-8 h-8 rounded-full bg-paper flex items-center justify-center shrink-0 shadow-sm">
-                      <span className="material-symbols-outlined text-ink text-[18px]">restaurant</span>
+                      <span className="material-symbols-outlined text-ink text-[18px]">
+                        {transaction.categories?.name?.toLowerCase().includes("mercado")
+                          ? "shopping_cart"
+                          : transaction.categories?.name?.toLowerCase().includes("refe") ||
+                            transaction.categories?.name?.toLowerCase().includes("alimen")
+                          ? "restaurant"
+                          : "category"}
+                      </span>
                     </div>
                     <div className="flex flex-col min-w-0">
                       <div className="flex items-center gap-1.5">
                         <span className="text-[14px] text-ink font-medium truncate">
-                          Alimentação &amp; Restaurante
+                          {transaction.categories?.name || "Geral"}
                         </span>
                         <span className="px-2 py-0.5 rounded-[18px] bg-paper text-ink text-[10px] uppercase shadow-sm shrink-0 font-medium">
-                          IA 99% Confiança
+                          Sincronizado
                         </span>
                       </div>
-                      <span className="text-[12px] text-mid-gray">Subcategoria: Almoço / Refeição Diária</span>
+                      <span className="text-[12px] text-mid-gray">Classificação automática</span>
                     </div>
                   </div>
                   <span className="material-symbols-outlined text-mid-gray text-[20px] shrink-0">
@@ -261,7 +388,7 @@ export default function EditarLancamentoPage() {
                   Conta de Origem / Pagamento
                 </span>
                 <button
-                  aria-label="Selecionar conta de débito Nubank"
+                  aria-label="Selecionar conta bancária"
                   className="w-full p-3 bg-canvas hover:bg-surface-container active:scale-[0.99] rounded-[18px] flex items-center justify-between gap-2 transition-all text-left"
                   type="button"
                   onClick={() => showToast("Conta sincronizada via Open Finance")}
@@ -272,9 +399,9 @@ export default function EditarLancamentoPage() {
                     </div>
                     <div className="flex flex-col min-w-0">
                       <span className="text-[14px] text-ink font-medium truncate">
-                        Nubank CC (Débito) • Final 4091
+                        {transaction.accounts?.name || "Conta Bancária"} ({transaction.payment_method || "Débito"})
                       </span>
-                      <span className="text-[12px] text-mid-gray">Saldo disponível: R$ 4.250,00</span>
+                      <span className="text-[12px] text-mid-gray">Conta vinculada ao lançamento</span>
                     </div>
                   </div>
                   <span className="material-symbols-outlined text-mid-gray text-[20px] shrink-0">

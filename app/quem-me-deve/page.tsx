@@ -40,82 +40,31 @@ export default function QuemMeDevePage() {
   const [baixaStatus, setBaixaStatus] = useState<"idle" | "loading" | "success" | "error">("idle");
   const [feedbackMensagem, setFeedbackMensagem] = useState("");
 
-  // Carrega dados da API com fallback resiliente
+  // Carrega dados diretamente da API / Supabase
   const carregarDados = useCallback(async () => {
     setIsLoading(true);
     try {
       const [respPessoas, respResumo] = await Promise.all([
-        obterPessoas().catch(() => ({ sucesso: false, dados: [] })),
-        obterResumoQuemMeDeve().catch(() => ({ sucesso: false, dados: null })),
+        obterPessoas().catch((err) => {
+          console.warn("Erro ao buscar pessoas da API:", err);
+          return { sucesso: false, dados: [] };
+        }),
+        obterResumoQuemMeDeve().catch((err) => {
+          console.warn("Erro ao buscar resumo de dívidas:", err);
+          return { sucesso: false, dados: null };
+        }),
       ]);
 
-      if (respPessoas.sucesso && respPessoas.dados && respPessoas.dados.length > 0) {
+      if (respPessoas.sucesso && respPessoas.dados) {
         setPessoas(respPessoas.dados);
       } else {
-        // Fallback enriquecido compatível com o design e protótipo
-        setPessoas([
-          {
-            id: "p-lucas",
-            name: "Lucas Albuquerque",
-            initials: "LA",
-            saldoDevedor: 540.0,
-            totalOriginal: 540.0,
-            totalPago: 0,
-            status: "Em aberto",
-            itensInclusos: [
-              { description: "Jantar Outback", amount: 320.0 },
-              { description: "Uber Viagem", amount: 220.0 },
-            ],
-          },
-          {
-            id: "p-camila",
-            name: "Camila Rocha",
-            initials: "CR",
-            saldoDevedor: 485.4,
-            totalOriginal: 485.4,
-            totalPago: 0,
-            status: "Em aberto",
-            itensInclusos: [
-              { description: "Airbnb Fim de Semana", amount: 485.4 },
-            ],
-          },
-          {
-            id: "p-rodrigo",
-            name: "Rodrigo Lima",
-            initials: "RL",
-            saldoDevedor: 260.0,
-            totalOriginal: 360.0,
-            totalPago: 100.0,
-            status: "Em aberto",
-            itensInclusos: [
-              { description: "Supermercado Pão de Açúcar", amount: 260.0 },
-            ],
-          },
-          {
-            id: "p-beatriz",
-            name: "Beatriz Mendes",
-            initials: "BM",
-            saldoDevedor: 0.0,
-            totalOriginal: 180.0,
-            totalPago: 180.0,
-            status: "Zerado",
-            itensInclusos: [],
-          },
-        ]);
+        setPessoas([]);
       }
 
       if (respResumo.sucesso && respResumo.dados) {
         setResumo(respResumo.dados);
       } else {
-        setResumo({
-          totalAReceber: 1285.4,
-          faturaCartao: 3382.6,
-          nomeCartao: "Nubank Ultravioleta",
-          percentualFatura: 38,
-          pendentesCount: 3,
-          totalPago: 350.0,
-          devedores: [],
-        });
+        setResumo(null);
       }
     } catch (err) {
       console.warn("Erro ao carregar dados de quem me deve:", err);
@@ -262,227 +211,282 @@ export default function QuemMeDevePage() {
 
       {/* Conteúdo Principal */}
       <div className="flex flex-col w-full max-w-md mx-auto px-4 pt-2 pb-8 gap-5 bg-[#f5f5f5]">
-        {/* Resumo Consolidado Card */}
-        <section className="w-full bg-white rounded-[24px] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex flex-col gap-4 relative">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex flex-col">
-              <span className="text-[12px] uppercase tracking-widest text-[#737373] font-medium leading-tight">
-                Total a receber da fatura
+        {/* Loading Global enquanto busca do banco de dados */}
+        {isLoading ? (
+          <div className="w-full py-16 flex flex-col items-center justify-center gap-3">
+            <div className="w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center text-[#0a0a0a]">
+              <span className="material-symbols-outlined text-[28px] animate-spin">
+                progress_activity
               </span>
-              <div className="flex items-baseline gap-1 mt-1">
-                <span className="text-[13px] font-medium text-[#171717]">R$</span>
-                <span className="text-[36px] font-semibold text-[#0a0a0a] tracking-tight">
-                  {formatarMoeda(totalAReceber)}
-                </span>
-              </div>
             </div>
-            <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#fafafa] border border-black/5">
-              <span className="w-2 h-2 rounded-full bg-[#0a0a0a]"></span>
-              <span className="text-[12px] text-[#0a0a0a] font-semibold">10 NOV</span>
-            </div>
-          </div>
-
-          {/* Comparativo / Contexto */}
-          <div className="bg-[#fafafa] rounded-xl p-3 flex items-center justify-between gap-2 border border-black/[0.04]">
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="material-symbols-outlined text-[18px] text-[#171717]">credit_card</span>
-              <p className="text-[13px] text-[#444748] truncate">
-                Equivale a{" "}
-                <strong className="text-[#0a0a0a] font-semibold">
-                  {resumo?.percentualFatura || 38}%
-                </strong>{" "}
-                do {resumo?.nomeCartao || "Nubank Ultravioleta"}
-              </p>
-            </div>
-            <span className="text-[12px] text-[#737373] shrink-0">
-              Fatura R$ {formatarMoeda(resumo?.faturaCartao || 3382.6)}
+            <span className="text-[14px] font-medium text-[#0a0a0a]">
+              Carregando pessoas e cobranças...
+            </span>
+            <span className="text-[12px] text-[#737373]">
+              Consultando banco de dados Supabase em tempo real
             </span>
           </div>
-
-          {/* Barra de Progresso Monocromática */}
-          <div className="flex flex-col gap-1.5">
-            <div className="flex justify-between items-center text-[12px] text-[#737373]">
-              <span>Recebido: R$ {formatarMoeda(totalPago)} (21%)</span>
-              <span>Pendente: R$ {formatarMoeda(totalAReceber)} (79%)</span>
-            </div>
-            <div className="w-full h-2 rounded-full bg-[#eeeeee] overflow-hidden flex">
-              <div className="h-full bg-[#0a0a0a] rounded-full transition-all duration-500" style={{ width: "21.4%" }}></div>
-              <div className="h-full bg-[#e5e5e5] flex-1"></div>
-            </div>
-          </div>
-
-          {/* Métricas Secundárias */}
-          <div className="grid grid-cols-3 gap-2 pt-2">
-            <div className="flex flex-col items-center text-center p-2 rounded-xl bg-[#fafafa] border border-black/[0.03]">
-              <span className="text-[18px] font-semibold text-[#0a0a0a]">{pendentesDestaFatura.length}</span>
-              <span className="text-[12px] text-[#737373] leading-tight mt-0.5">pendentes</span>
-            </div>
-            <div className="flex flex-col items-center text-center p-2 rounded-xl bg-[#fafafa] border border-black/[0.03]">
-              <span className="text-[18px] font-semibold text-[#0a0a0a]">1</span>
-              <span className="text-[12px] text-[#737373] leading-tight mt-0.5">já pagou</span>
-            </div>
-            <div className="flex flex-col items-center text-center p-2 rounded-xl bg-[#fafafa] border border-black/[0.03]">
-              <span className="text-[18px] font-semibold text-[#0a0a0a]">4 dias</span>
-              <span className="text-[12px] text-[#737373] leading-tight mt-0.5">vencimento</span>
-            </div>
-          </div>
-        </section>
-
-        {/* Ações Rápidas */}
-        <section className="flex items-center gap-2">
-          <Link
-            href="/extrato"
-            className="flex-1 h-11 bg-[#0a0a0a] text-white rounded-[18px] flex items-center justify-center gap-1.5 hover:bg-[#171717] active:scale-[0.98] transition-all duration-150 px-3 shadow-xs"
-          >
-            <span className="material-symbols-outlined text-[18px]">add_circle</span>
-            <span className="text-[13px] font-medium truncate">Dividir Compra</span>
-          </Link>
-
-          <button
-            onClick={() => {
-              if (pendentesDestaFatura.length > 0) {
-                abrirModalBaixa(pendentesDestaFatura[0]);
-              }
-            }}
-            type="button"
-            className="flex-1 h-11 bg-white text-[#0a0a0a] border border-[#e5e5e5] rounded-[18px] flex items-center justify-center gap-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-[#fafafa] active:scale-[0.98] transition-all duration-150 px-3"
-          >
-            <span className="material-symbols-outlined text-[18px] text-[#0a0a0a]">check_circle</span>
-            <span className="text-[13px] font-medium truncate">Dar Baixa</span>
-          </button>
-
-          <button
-            onClick={copiarPix}
-            type="button"
-            className="h-11 px-3.5 bg-white text-[#0a0a0a] border border-[#e5e5e5] rounded-[18px] flex items-center justify-center gap-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-[#fafafa] active:scale-[0.98] transition-all duration-150 shrink-0"
-          >
-            <span className="material-symbols-outlined text-[18px]">
-              {pixCopiado ? "done" : "qr_code_2"}
-            </span>
-            <span className="text-[13px] font-medium">
-              {pixCopiado ? "Copiado!" : "Pix"}
-            </span>
-          </button>
-        </section>
-
-        {/* Diagnóstico Guará IA */}
-        <div className="bg-white rounded-[24px] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-start gap-3 border border-black/5">
-          <div className="w-8 h-8 rounded-full bg-[#0a0a0a] text-white flex items-center justify-center shrink-0 mt-0.5">
-            <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
-          </div>
-          <div className="flex flex-col gap-1 min-w-0 flex-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[12px] uppercase tracking-wider text-[#0a0a0a] font-semibold">
-                Diagnóstico Guará IA
-              </span>
-              <span className="text-[12px] text-[#737373]">Otimização</span>
-            </div>
-            <p className="text-[13px] text-[#444748] leading-relaxed">
-              Se todos quitarem até <strong className="text-[#0a0a0a]">08/11</strong> (2 dias antes do vencimento), sua fatura fecha com saldo positivo em conta e você <strong className="text-[#0a0a0a]">não precisa resgatar da Caixinha</strong>.
-            </p>
-          </div>
-        </div>
-
-        {/* Pendentes Desta Fatura */}
-        <section className="flex flex-col gap-3">
-          <div className="flex items-center justify-between px-1">
-            <div className="flex items-center gap-2">
-              <span className="text-[18px] font-semibold text-[#0a0a0a] tracking-tight">
-                Pendentes desta Fatura
-              </span>
-              <span className="w-5 h-5 rounded-full bg-[#eeeeee] flex items-center justify-center text-[12px] text-[#0a0a0a] font-semibold">
-                {pendentesDestaFatura.length}
-              </span>
-            </div>
-            <button
-              type="button"
-              onClick={() => alert("Lembretes de cobrança enviados com sucesso via Guará IA!")}
-              className="text-[13px] font-medium text-[#737373] hover:text-[#0a0a0a] transition-colors duration-150"
-            >
-              Lembrar todos
-            </button>
-          </div>
-
-          {/* Cards de Devedores */}
-          {pendentesDestaFatura.map((pessoa) => (
-            <div
-              key={pessoa.id}
-              className="bg-white rounded-[24px] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex flex-col gap-3.5 border border-black/5"
-            >
-              <div className="flex items-start justify-between gap-2">
-                <div className="flex items-center gap-3">
-                  <div className="w-10 h-10 rounded-full bg-[#e8e8e8] flex items-center justify-center text-[#0a0a0a] font-semibold text-[14px]">
-                    {pessoa.initials}
-                  </div>
-                  <div className="flex flex-col">
-                    <span className="text-[14px] text-[#0a0a0a] font-semibold">{pessoa.name}</span>
-                    <span className="text-[12px] text-[#737373]">Pessoa Cadastrada no Banco</span>
+        ) : (
+          <>
+            {/* Resumo Consolidado Card */}
+            <section className="w-full bg-white rounded-[24px] p-5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex flex-col gap-4 relative">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex flex-col">
+                  <span className="text-[12px] uppercase tracking-widest text-[#737373] font-medium leading-tight">
+                    Total a receber da fatura
+                  </span>
+                  <div className="flex items-baseline gap-1 mt-1">
+                    <span className="text-[13px] font-medium text-[#171717]">R$</span>
+                    <span className="text-[36px] font-semibold text-[#0a0a0a] tracking-tight">
+                      {formatarMoeda(totalAReceber)}
+                    </span>
                   </div>
                 </div>
-                <div className="flex flex-col items-end">
+                <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#fafafa] border border-black/5">
+                  <span className="w-2 h-2 rounded-full bg-[#0a0a0a]"></span>
+                  <span className="text-[12px] text-[#0a0a0a] font-semibold">
+                    {resumo?.totalAReceber ? "FATURA ATUAL" : "ATUALIZADO"}
+                  </span>
+                </div>
+              </div>
+
+              {/* Comparativo / Contexto */}
+              {resumo?.faturaCartao ? (
+                <div className="bg-[#fafafa] rounded-xl p-3 flex items-center justify-between gap-2 border border-black/[0.04]">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="material-symbols-outlined text-[18px] text-[#171717]">credit_card</span>
+                    <p className="text-[13px] text-[#444748] truncate">
+                      Equivale a{" "}
+                      <strong className="text-[#0a0a0a] font-semibold">
+                        {resumo.percentualFatura}%
+                      </strong>{" "}
+                      do {resumo.nomeCartao}
+                    </p>
+                  </div>
+                  <span className="text-[12px] text-[#737373] shrink-0">
+                    Fatura R$ {formatarMoeda(resumo.faturaCartao)}
+                  </span>
+                </div>
+              ) : null}
+
+              {/* Barra de Progresso Monocromática */}
+              <div className="flex flex-col gap-1.5">
+                <div className="flex justify-between items-center text-[12px] text-[#737373]">
+                  <span>Pendente: R$ {formatarMoeda(totalAReceber)}</span>
+                  <span>{pendentesDestaFatura.length} pessoa{pendentesDestaFatura.length !== 1 ? "s" : ""}</span>
+                </div>
+                <div className="w-full h-2 rounded-full bg-[#eeeeee] overflow-hidden flex">
+                  <div
+                    className="h-full bg-[#0a0a0a] rounded-full transition-all duration-500"
+                    style={{
+                      width: totalAReceber > 0 ? "100%" : "0%",
+                    }}
+                  ></div>
+                </div>
+              </div>
+
+              {/* Métricas Secundárias */}
+              <div className="grid grid-cols-3 gap-2 pt-2">
+                <div className="flex flex-col items-center text-center p-2 rounded-xl bg-[#fafafa] border border-black/[0.03]">
+                  <span className="text-[18px] font-semibold text-[#0a0a0a]">{pendentesDestaFatura.length}</span>
+                  <span className="text-[12px] text-[#737373] leading-tight mt-0.5">pendentes</span>
+                </div>
+                <div className="flex flex-col items-center text-center p-2 rounded-xl bg-[#fafafa] border border-black/[0.03]">
                   <span className="text-[18px] font-semibold text-[#0a0a0a]">
-                    R$ {formatarMoeda(pessoa.saldoDevedor)}
+                    {pessoas.filter((p) => p.saldoDevedor === 0).length}
                   </span>
-                  <span className="px-2 py-0.5 rounded-full bg-[#fafafa] border border-black/5 text-[12px] text-[#737373] mt-0.5">
-                    Pendente
-                  </span>
+                  <span className="text-[12px] text-[#737373] leading-tight mt-0.5">zerados</span>
+                </div>
+                <div className="flex flex-col items-center text-center p-2 rounded-xl bg-[#fafafa] border border-black/[0.03]">
+                  <span className="text-[18px] font-semibold text-[#0a0a0a]">{pessoas.length}</span>
+                  <span className="text-[12px] text-[#737373] leading-tight mt-0.5">cadastrados</span>
                 </div>
               </div>
+            </section>
 
-              {/* Transações Vinculadas */}
-              {pessoa.itensInclusos && pessoa.itensInclusos.length > 0 && (
-                <div className="bg-[#fafafa] rounded-xl p-3 flex flex-col gap-2 border border-black/[0.03]">
-                  <span className="text-[12px] text-[#737373] uppercase tracking-wider font-medium">
-                    Itens inclusos na fatura
+            {/* Ações Rápidas */}
+            <section className="flex items-center gap-2">
+              <Link
+                href="/extrato"
+                className="flex-1 h-11 bg-[#0a0a0a] text-white rounded-[18px] flex items-center justify-center gap-1.5 hover:bg-[#171717] active:scale-[0.98] transition-all duration-150 px-3 shadow-xs"
+              >
+                <span className="material-symbols-outlined text-[18px]">add_circle</span>
+                <span className="text-[13px] font-medium truncate">Dividir Compra</span>
+              </Link>
+
+              <button
+                onClick={() => {
+                  if (pendentesDestaFatura.length > 0) {
+                    abrirModalBaixa(pendentesDestaFatura[0]);
+                  } else if (pessoas.length > 0) {
+                    abrirModalBaixa(pessoas[0]);
+                  } else {
+                    setIsNovaPessoaModalOpen(true);
+                  }
+                }}
+                type="button"
+                className="flex-1 h-11 bg-white text-[#0a0a0a] border border-[#e5e5e5] rounded-[18px] flex items-center justify-center gap-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-[#fafafa] active:scale-[0.98] transition-all duration-150 px-3"
+              >
+                <span className="material-symbols-outlined text-[18px] text-[#0a0a0a]">check_circle</span>
+                <span className="text-[13px] font-medium truncate">Dar Baixa</span>
+              </button>
+
+              <button
+                onClick={copiarPix}
+                type="button"
+                className="h-11 px-3.5 bg-white text-[#0a0a0a] border border-[#e5e5e5] rounded-[18px] flex items-center justify-center gap-1.5 shadow-[0_1px_2px_rgba(0,0,0,0.05)] hover:bg-[#fafafa] active:scale-[0.98] transition-all duration-150 shrink-0"
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  {pixCopiado ? "done" : "qr_code_2"}
+                </span>
+                <span className="text-[13px] font-medium">
+                  {pixCopiado ? "Copiado!" : "Pix"}
+                </span>
+              </button>
+            </section>
+
+            {/* Diagnóstico Guará IA */}
+            <div className="bg-white rounded-[24px] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex items-start gap-3 border border-black/5">
+              <div className="w-8 h-8 rounded-full bg-[#0a0a0a] text-white flex items-center justify-center shrink-0 mt-0.5">
+                <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
+              </div>
+              <div className="flex flex-col gap-1 min-w-0 flex-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-[12px] uppercase tracking-wider text-[#0a0a0a] font-semibold">
+                    Diagnóstico Guará IA
                   </span>
-                  {pessoa.itensInclusos.map((item, idx) => (
-                    <div key={idx} className="flex justify-between items-center text-[13px]">
-                      <span className="text-[#444748] flex items-center gap-1.5 truncate">
-                        <span className="material-symbols-outlined text-[15px] text-[#737373]">
-                          receipt
-                        </span>
-                        {item.description}
-                      </span>
-                      <span className="text-[#0a0a0a] font-medium shrink-0 ml-2">
-                        R$ {formatarMoeda(item.amount)}
-                      </span>
-                    </div>
-                  ))}
+                  <span className="text-[12px] text-[#737373]">Tempo Real</span>
                 </div>
-              )}
-
-              {/* Ações do Card */}
-              <div className="flex items-center justify-between gap-2 pt-1">
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => abrirModalBaixa(pessoa)}
-                    type="button"
-                    className="h-9 px-3.5 rounded-full bg-[#0a0a0a] text-white text-[13px] font-medium hover:bg-[#171717] transition-colors duration-150 flex items-center gap-1.5 shadow-xs"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">check_circle</span>
-                    <span>Dar Baixa</span>
-                  </button>
-                  <button
-                    onClick={() => alert(`Lembrete Pix copiado para enviar a ${pessoa.name}`)}
-                    type="button"
-                    className="h-9 px-3 rounded-full bg-[#fafafa] border border-black/5 text-[#0a0a0a] text-[13px] font-medium hover:bg-[#eeeeee] transition-colors duration-150 flex items-center gap-1.5"
-                  >
-                    <span className="material-symbols-outlined text-[16px]">chat</span>
-                    <span>Cobrar</span>
-                  </button>
-                </div>
-                <button
-                  onClick={() => abrirModalBaixa(pessoa)}
-                  type="button"
-                  className="h-9 px-3 rounded-full bg-transparent text-[#737373] hover:text-[#0a0a0a] text-[13px] font-medium transition-colors duration-150 flex items-center gap-1"
-                >
-                  <span>Ver Detalhes</span>
-                  <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-                </button>
+                <p className="text-[13px] text-[#444748] leading-relaxed">
+                  {totalAReceber > 0 ? (
+                    <>
+                      Existem <strong className="text-[#0a0a0a]">R$ {formatarMoeda(totalAReceber)}</strong> pendentes de recebimento divididos entre amigos. Ao registrar os pagamentos, o saldo é abatido instantaneamente do seu ledger.
+                    </>
+                  ) : (
+                    <>
+                      Excelente! Todas as despesas divididas e cobranças registradas estão <strong className="text-[#0a0a0a]">100% quitadas</strong>. Nenhum amigo possui pendências em aberto.
+                    </>
+                  )}
+                </p>
               </div>
             </div>
-          ))}
-        </section>
+
+            {/* Pendentes Desta Fatura */}
+            <section className="flex flex-col gap-3">
+              <div className="flex items-center justify-between px-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[18px] font-semibold text-[#0a0a0a] tracking-tight">
+                    Pendentes Desta Fatura
+                  </span>
+                  <span className="w-5 h-5 rounded-full bg-[#eeeeee] flex items-center justify-center text-[12px] text-[#0a0a0a] font-semibold">
+                    {pendentesDestaFatura.length}
+                  </span>
+                </div>
+                {pendentesDestaFatura.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => alert("Lembretes de cobrança enviados com sucesso via Guará IA!")}
+                    className="text-[13px] font-medium text-[#737373] hover:text-[#0a0a0a] transition-colors duration-150"
+                  >
+                    Lembrar todos
+                  </button>
+                )}
+              </div>
+
+              {/* Cards de Devedores ou Estado Vazio */}
+              {pendentesDestaFatura.length === 0 ? (
+                <div className="bg-white rounded-[24px] p-6 text-center text-[#737373] text-[13px] border border-black/5 shadow-xs flex flex-col items-center gap-2">
+                  <span className="material-symbols-outlined text-[32px] text-neutral-400">
+                    task_alt
+                  </span>
+                  <span className="font-medium text-[#0a0a0a]">Nenhuma pendência em aberto</span>
+                  <p className="text-[12px] max-w-xs text-[#737373]">
+                    Não há amigos devendo valores no momento. Você pode dividir uma compra no extrato a qualquer instante.
+                  </p>
+                </div>
+              ) : (
+                pendentesDestaFatura.map((pessoa) => (
+                  <div
+                    key={pessoa.id}
+                    className="bg-white rounded-[24px] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex flex-col gap-3.5 border border-black/5"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-full bg-[#e8e8e8] flex items-center justify-center text-[#0a0a0a] font-semibold text-[14px]">
+                          {pessoa.initials}
+                        </div>
+                        <div className="flex flex-col">
+                          <span className="text-[14px] text-[#0a0a0a] font-semibold">{pessoa.name}</span>
+                          <span className="text-[12px] text-[#737373]">Pessoa Cadastrada no Banco</span>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end">
+                        <span className="text-[18px] font-semibold text-[#0a0a0a]">
+                          R$ {formatarMoeda(pessoa.saldoDevedor)}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-full bg-[#fafafa] border border-black/5 text-[12px] text-[#737373] mt-0.5">
+                          Pendente
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Transações Vinculadas */}
+                    {pessoa.itensInclusos && pessoa.itensInclusos.length > 0 && (
+                      <div className="bg-[#fafafa] rounded-xl p-3 flex flex-col gap-2 border border-black/[0.03]">
+                        <span className="text-[12px] text-[#737373] uppercase tracking-wider font-medium">
+                          Itens inclusos na fatura
+                        </span>
+                        {pessoa.itensInclusos.map((item, idx) => (
+                          <div key={idx} className="flex justify-between items-center text-[13px]">
+                            <span className="text-[#444748] flex items-center gap-1.5 truncate">
+                              <span className="material-symbols-outlined text-[15px] text-[#737373]">
+                                receipt
+                              </span>
+                              {item.description}
+                            </span>
+                            <span className="text-[#0a0a0a] font-medium shrink-0 ml-2">
+                              R$ {formatarMoeda(item.amount)}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Ações do Card */}
+                    <div className="flex items-center justify-between gap-2 pt-1">
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => abrirModalBaixa(pessoa)}
+                          type="button"
+                          className="h-9 px-3.5 rounded-full bg-[#0a0a0a] text-white text-[13px] font-medium hover:bg-[#171717] transition-colors duration-150 flex items-center gap-1.5 shadow-xs"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">check_circle</span>
+                          <span>Dar Baixa</span>
+                        </button>
+                        <button
+                          onClick={() => alert(`Lembrete Pix copiado para enviar a ${pessoa.name}`)}
+                          type="button"
+                          className="h-9 px-3 rounded-full bg-[#fafafa] border border-black/5 text-[#0a0a0a] text-[13px] font-medium hover:bg-[#eeeeee] transition-colors duration-150 flex items-center gap-1.5"
+                        >
+                          <span className="material-symbols-outlined text-[16px]">chat</span>
+                          <span>Cobrar</span>
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => abrirModalBaixa(pessoa)}
+                        type="button"
+                        className="h-9 px-3 rounded-full bg-transparent text-[#737373] hover:text-[#0a0a0a] text-[13px] font-medium transition-colors duration-150 flex items-center gap-1"
+                      >
+                        <span>Ver Detalhes</span>
+                        <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                      </button>
+                    </div>
+                  </div>
+                ))
+              )}
+            </section>
+          </>
+        )}
 
         {/* Banner de Recebimento Rápido */}
         <div className="bg-white rounded-[24px] p-4 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex flex-col gap-3 border border-[#e5e5e5]">

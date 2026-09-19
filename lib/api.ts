@@ -265,6 +265,7 @@ export interface ItemExtrato {
   installment_number?: number | null;
   installment_total?: number | null;
   installment_group_id?: string | null;
+  observation?: string | null;
   categories?: { id: number; name: string } | null;
   accounts?: { id: string; name: string; type: string } | null;
 }
@@ -388,6 +389,25 @@ export async function cadastrarCartao(dados: NovoCartaoInput): Promise<{ sucesso
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error(err.mensagem || `Erro ao cadastrar cartão: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Remove um cartão cadastrado no backend
+ */
+export async function excluirCartao(idOuNome: string): Promise<{ sucesso: boolean; mensagem: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/cards?id=${encodeURIComponent(idOuNome)}`, {
+    method: 'DELETE',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao remover cartão: ${res.status}`);
   }
 
   return res.json();

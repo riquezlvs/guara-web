@@ -11,19 +11,6 @@ type TransactionDetails = ItemExtrato & {
   bankId: string;
 };
 
-const fallbackTransaction: TransactionDetails = {
-  display_id: 3819,
-  description: "Restaurante da Esquina",
-  total_amount: 45,
-  occurred_at: "2024-10-24T13:24:18-03:00",
-  payment_method: "debit_card",
-  entry_type: "expense",
-  categories: { id: 1, name: "Alimentação" },
-  accounts: { id: "nubank", name: "Nubank CC", type: "checking" },
-  note: "Almoço de equipe após reunião de alinhamento trimestral com time de produto.",
-  tags: ["#Almoço", "#Trabalho", "#Reembolsável"],
-  bankId: "DOC-98421038-NU",
-};
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
@@ -46,13 +33,15 @@ function paymentLabel(method: string) {
 
 export default function TransactionDetailsPage() {
   const params = useParams<{ id: string }>();
-  const [transaction, setTransaction] = useState<TransactionDetails>(fallbackTransaction);
+  const [transaction, setTransaction] = useState<TransactionDetails | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState("");
 
   useEffect(() => {
     let mounted = true;
 
     async function loadTransaction() {
+      setIsLoading(true);
       try {
         const response = await obterExtrato();
         const found = response.dados?.itens.find(
@@ -66,8 +55,12 @@ export default function TransactionDetailsPage() {
             bankId: `DOC-${found.display_id}`,
           });
         }
-      } catch {
-        // The reference transaction keeps the detail screen usable offline.
+      } catch (err) {
+        console.warn("Erro ao buscar detalhes do lançamento:", err);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
       }
     }
 
@@ -76,6 +69,55 @@ export default function TransactionDetailsPage() {
       mounted = false;
     };
   }, [params.id]);
+
+  if (isLoading) {
+    return (
+      <main className="flex-1 flex flex-col items-center justify-center min-h-[60vh] text-[#737373]">
+        <span className="material-symbols-outlined text-[32px] animate-spin mb-2">
+          progress_activity
+        </span>
+        <span className="text-[14px]">Carregando lançamento...</span>
+      </main>
+    );
+  }
+
+  if (!transaction) {
+    return (
+      <main className="flex-1 w-full max-w-md mx-auto px-4 pt-16 pb-48 text-[#0a0a0a]">
+        <div className="flex flex-col gap-4 pb-6">
+          <section className="flex items-center justify-between gap-2 py-2">
+            <Link
+              href="/extrato"
+              className="h-9 px-3 rounded-full bg-white shadow-sm flex items-center gap-1.5 text-[12px] font-medium hover:bg-[#fafafa] active:scale-95 transition-all"
+            >
+              <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+              Voltar
+            </Link>
+            <span className="text-[10px] text-[#737373] uppercase tracking-[0.16em] truncate">
+              Detalhes do lançamento
+            </span>
+          </section>
+
+          <div className="rounded-[24px] bg-white p-8 text-center shadow-sm flex flex-col items-center justify-center gap-3">
+            <div className="w-14 h-14 rounded-full bg-[#f5f5f5] flex items-center justify-center text-[#737373]">
+              <span className="material-symbols-outlined text-[28px]">search_off</span>
+            </div>
+            <h3 className="text-[16px] font-semibold text-[#0a0a0a]">Lançamento não encontrado</h3>
+            <p className="text-[13px] text-[#737373] max-w-xs leading-relaxed">
+              O lançamento solicitado não existe ou ainda não foi sincronizado com o banco.
+            </p>
+            <Link
+              href="/extrato"
+              className="mt-2 inline-flex items-center gap-2 px-4 py-2 rounded-full bg-[#0a0a0a] text-white text-[13px] font-medium hover:bg-neutral-800 active:scale-95 transition-all"
+            >
+              <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+              <span>Ir para o Extrato</span>
+            </Link>
+          </div>
+        </div>
+      </main>
+    );
+  }
 
   const isIncome = transaction.entry_type === "income";
   const category = transaction.categories?.name || "Geral";

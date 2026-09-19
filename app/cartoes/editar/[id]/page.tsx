@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { obterCartoes, cadastrarCartao, CartaoItem } from "@/lib/api";
+import { obterCartoes, cadastrarCartao, excluirCartao, CartaoItem } from "@/lib/api";
 
 export default function EditarCartaoPage() {
   const router = useRouter();
@@ -21,6 +21,8 @@ export default function EditarCartaoPage() {
   const [isVirtual, setIsVirtual] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [confirmDelete, setConfirmDelete] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -159,6 +161,42 @@ export default function EditarCartaoPage() {
       setSubmitStatus("error");
       setErrorMessage(err.message || "Erro ao salvar alterações do cartão.");
       setIsSubmitting(false);
+    }
+  };
+
+  const handleDeleteCartao = async () => {
+    if (!confirmDelete) {
+      setConfirmDelete(true);
+      return;
+    }
+
+    setIsDeleting(true);
+    setErrorMessage("");
+
+    try {
+      // 1. Remove do backend Guará IA
+      await excluirCartao(cardId);
+
+      // 2. Remove de overrides salvos localmente
+      try {
+        const raw = localStorage.getItem("guara:cartoes_overrides");
+        if (raw) {
+          const overrides = JSON.parse(raw);
+          delete overrides[cardId];
+          if (nickname) delete overrides[nickname];
+          localStorage.setItem("guara:cartoes_overrides", JSON.stringify(overrides));
+        }
+      } catch (e) {
+        console.warn("Erro ao limpar overrides do localStorage:", e);
+      }
+
+      window.dispatchEvent(new CustomEvent("finances:refresh"));
+      router.push("/cartoes");
+      router.refresh();
+    } catch (err: any) {
+      setErrorMessage(err.message || "Erro ao excluir o cartão.");
+      setIsDeleting(false);
+      setConfirmDelete(false);
     }
   };
 
@@ -508,11 +546,36 @@ export default function EditarCartaoPage() {
             <button
               type="button"
               onClick={() => router.back()}
-              disabled={isSubmitting}
-              className="w-full h-11 rounded-[20px] bg-[#f5f5f5] text-[#0a0a0a] text-[14px] font-medium flex items-center justify-center hover:bg-[#eeeeee] active:scale-[0.99] transition-all"
+              disabled={isSubmitting || isDeleting}
+              className="w-full h-11 rounded-[20px] bg-[#f5f5f5] text-[#0a0a0a] text-[14px] font-medium flex items-center justify-center hover:bg-[#eeeeee] active:scale-[0.99] transition-all cursor-pointer"
             >
               Cancelar
             </button>
+
+            {/* Botão de Excluir Cartão */}
+            <div className="pt-2 border-t border-black/5">
+              <button
+                type="button"
+                onClick={handleDeleteCartao}
+                disabled={isSubmitting || isDeleting}
+                className={`w-full h-11 rounded-[20px] text-[13px] font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  confirmDelete
+                    ? "bg-rose-600 text-white animate-pulse shadow-sm"
+                    : "bg-rose-50 text-rose-600 hover:bg-rose-100"
+                }`}
+              >
+                <span className="material-symbols-outlined text-[18px]">
+                  {isDeleting ? "progress_activity" : "delete"}
+                </span>
+                <span>
+                  {isDeleting
+                    ? "Removendo cartão..."
+                    : confirmDelete
+                    ? "Confirmar exclusão definitiva do cartão?"
+                    : "Excluir Este Cartão"}
+                </span>
+              </button>
+            </div>
           </div>
         </form>
       </div>

@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { obterExtrato, ItemExtrato } from "@/lib/api";
 
 interface FriendMember {
   id: string;
@@ -16,7 +17,8 @@ export default function DividirComAmigosPage() {
   const router = useRouter();
   const params = useParams<{ id: string }>();
 
-  const baseAmount = 45.0;
+  const [isLoading, setIsLoading] = useState(true);
+  const [transaction, setTransaction] = useState<ItemExtrato | null>(null);
   const [mode, setMode] = useState<"equal" | "exact" | "percent" | "receipt">("equal");
   const [whatsappShare, setWhatsappShare] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -30,6 +32,36 @@ export default function DividirComAmigosPage() {
   ]);
 
   const [toastMessage, setToastMessage] = useState("");
+
+  useEffect(() => {
+    let mounted = true;
+
+    async function loadTransaction() {
+      setIsLoading(true);
+      try {
+        const response = await obterExtrato();
+        const found = response.dados?.itens.find(
+          (item) => String(item.display_id) === params.id
+        );
+        if (found && mounted) {
+          setTransaction(found);
+        }
+      } catch (err) {
+        console.warn("Erro ao carregar lançamento para divisão:", err);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    }
+
+    void loadTransaction();
+    return () => {
+      mounted = false;
+    };
+  }, [params.id]);
+
+  const baseAmount = transaction ? Number(transaction.total_amount) : 0;
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -71,6 +103,83 @@ export default function DividirComAmigosPage() {
       router.back();
     }, 600);
   };
+
+  if (isLoading) {
+    return (
+      <div className="bg-surface font-sans text-body-md text-on-surface antialiased min-h-screen flex flex-col">
+        <header className="fixed top-0 w-full z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+          <div className="h-14 px-4 max-w-xl mx-auto flex items-center justify-between gap-2">
+            <button
+              className="min-w-[44px] min-h-[44px] -ml-2 flex items-center gap-1 text-on-surface hover:text-ink transition-colors"
+              onClick={() => router.back()}
+              type="button"
+            >
+              <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+              <span className="text-[14px] font-medium tracking-tight">Voltar</span>
+            </button>
+            <h1 className="text-[18px] leading-[26px] font-semibold text-ink truncate text-center flex-1">
+              Dividir Com Amigos
+            </h1>
+            <div className="w-11" />
+          </div>
+        </header>
+        <main className="flex-1 flex flex-col items-center justify-center min-h-[60vh] text-[#737373] pt-14">
+          <span className="material-symbols-outlined text-[32px] animate-spin mb-2">
+            progress_activity
+          </span>
+          <span className="text-[14px]">Carregando lançamento...</span>
+        </main>
+      </div>
+    );
+  }
+
+  if (!transaction) {
+    return (
+      <div className="bg-surface font-sans text-body-md text-on-surface antialiased min-h-screen flex flex-col">
+        <header className="fixed top-0 w-full z-50 pt-safe bg-surface/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)]">
+          <div className="h-14 px-4 max-w-xl mx-auto flex items-center justify-between gap-2">
+            <button
+              className="min-w-[44px] min-h-[44px] -ml-2 flex items-center gap-1 text-on-surface hover:text-ink transition-colors"
+              onClick={() => router.back()}
+              type="button"
+            >
+              <span className="material-symbols-outlined text-[20px]">arrow_back</span>
+              <span className="text-[14px] font-medium tracking-tight">Voltar</span>
+            </button>
+            <h1 className="text-[18px] leading-[26px] font-semibold text-ink truncate text-center flex-1">
+              Dividir Com Amigos
+            </h1>
+            <div className="w-11" />
+          </div>
+        </header>
+        <main className="flex-1 flex flex-col items-center justify-center px-4 pt-20 text-center">
+          <div className="w-14 h-14 rounded-full bg-[#f5f5f5] flex items-center justify-center text-[#737373] mb-3">
+            <span className="material-symbols-outlined text-[28px]">search_off</span>
+          </div>
+          <h3 className="text-[16px] font-semibold text-ink">Lançamento não encontrado</h3>
+          <p className="text-[13px] text-mid-gray mt-1 mb-4">
+            Não foi possível carregar os detalhes deste lançamento para divisão.
+          </p>
+          <button
+            onClick={() => router.back()}
+            className="px-5 py-2.5 rounded-full bg-ink text-paper text-[13px] font-medium"
+            type="button"
+          >
+            Voltar ao Extrato
+          </button>
+        </main>
+      </div>
+    );
+  }
+
+  const transactionDate = transaction.occurred_at
+    ? new Date(transaction.occurred_at).toLocaleDateString("pt-BR", {
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })
+    : "Data recente";
 
   return (
     <div className="bg-surface font-sans text-body-md text-on-surface antialiased min-h-screen flex flex-col">
@@ -116,19 +225,30 @@ export default function DividirComAmigosPage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-center gap-3 min-w-0">
                   <div className="w-12 h-12 rounded-[18px] bg-surface-container flex items-center justify-center text-ink shrink-0">
-                    <span className="material-symbols-outlined text-[24px]">restaurant</span>
+                    <span className="material-symbols-outlined text-[24px]">
+                      {transaction.categories?.name?.toLowerCase().includes("mercado")
+                        ? "shopping_cart"
+                        : transaction.categories?.name?.toLowerCase().includes("refe") ||
+                          transaction.categories?.name?.toLowerCase().includes("alimen")
+                        ? "restaurant"
+                        : "receipt_long"}
+                    </span>
                   </div>
                   <div className="min-w-0">
                     <div className="flex items-center gap-1.5 mb-0.5">
                       <span className="px-2 py-0.5 rounded-full bg-surface-container-low text-[12px] text-mid-gray uppercase tracking-wider font-medium">
-                        Despesa Única
+                        {transaction.installment_total && transaction.installment_total > 1
+                          ? `Parcela ${transaction.installment_number || 1}/${transaction.installment_total}`
+                          : "Despesa Única"}
                       </span>
-                      <span className="text-[12px] text-mid-gray truncate">14 Nov, 20:45</span>
+                      <span className="text-[12px] text-mid-gray truncate">{transactionDate}</span>
                     </div>
                     <h2 className="text-[18px] leading-[26px] text-ink truncate font-semibold">
-                      Restaurante da Esquina
+                      {transaction.description}
                     </h2>
-                    <p className="text-[13px] text-mid-gray truncate">Alimentação & Gastronomia Urbana</p>
+                    <p className="text-[13px] text-mid-gray truncate">
+                      {transaction.categories?.name || "Geral"} • {transaction.accounts?.name || "Conta Bancária"}
+                    </p>
                   </div>
                 </div>
                 <div className="text-right shrink-0">
