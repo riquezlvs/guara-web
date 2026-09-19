@@ -85,6 +85,23 @@ export interface DashboardResponse {
       valorMensal: number | null;
       concluida: boolean;
     }>;
+    graficos?: {
+      distribuicaoCategorias: Array<{
+        categoria: string;
+        total: number;
+        percentual: number;
+        cor: string;
+      }>;
+      totalCategorias: number;
+      rotuloMesAtual: string;
+      evolucao: {
+        totalMesAtual: number;
+        variacaoPercentual: number;
+        seisMeses: Array<{ label: string; total: number; mesAno: string }>;
+        trintaDias: Array<{ label: string; total: number; data: string }>;
+        seteDias: Array<{ label: string; total: number; data: string }>;
+      };
+    };
   };
   mensagem?: string;
 }
@@ -286,3 +303,91 @@ export async function obterExtrato(mesAno?: string): Promise<ExtratoResponse> {
 
   return res.json();
 }
+
+export interface CartaoItem {
+  id: string;
+  name: string;
+  closing_day: number;
+  due_day?: number | null;
+  card_type: string;
+  is_default: boolean;
+  credit_limit?: number;
+  card_holder?: string | null;
+  last_four_digits?: string | null;
+  color_theme?: string;
+  is_virtual?: boolean;
+  faturaAtual: number;
+  limiteDisponivel: number;
+  percentualUtilizado: number;
+  periodo: {
+    inicio: string;
+    fim: string;
+    fechamento: string;
+  };
+  itensFatura: Array<{
+    display_id: number;
+    description: string;
+    total_amount: number;
+    occurred_at: string;
+    installment_number?: number | null;
+    installment_total?: number | null;
+  }>;
+}
+
+export interface NovoCartaoInput {
+  name: string;
+  closing_day: number;
+  due_day?: number;
+  credit_limit?: number;
+  card_type?: string;
+  card_holder?: string;
+  last_four_digits?: string;
+  color_theme?: string;
+  is_virtual?: boolean;
+}
+
+export interface CartoesResponse {
+  sucesso: boolean;
+  dados: CartaoItem[];
+  mensagem?: string;
+}
+
+/**
+ * Obtém todos os cartões cadastrados com faturas calculadas e despesas
+ */
+export async function obterCartoes(): Promise<CartoesResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/cards`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error(`Erro ao obter cartões: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Salva ou atualiza um cartão no backend
+ */
+export async function cadastrarCartao(dados: NovoCartaoInput): Promise<{ sucesso: boolean; dados: any; mensagem: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/cards`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(dados),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao cadastrar cartão: ${res.status}`);
+  }
+
+  return res.json();
+}
+
