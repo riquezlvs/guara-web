@@ -101,7 +101,102 @@ export interface DashboardRecentItem {
   categories?: { name: string };
 }
 
+export interface TransactionDraft {
+  originalInput: string;
+  isAudio: boolean;
+  audioDuration?: string;
+  precision?: string;
+  entryType: 'expense' | 'income';
+  description: string;
+  totalAmount: number;
+  categoryId?: number;
+  categoryName: string;
+  paymentMethod: string;
+  paymentMethodLabel: string;
+  cardName?: string | null;
+  accountName: string;
+  accountId?: string | null;
+  accountBalance: number;
+  occurredAt: string;
+  location?: string | null;
+  safeToSpend: {
+    current: number;
+    projected: number;
+    impactPercentage: number;
+    impactLabel: string;
+    progressBarPercent: number;
+  };
+  availableCategories?: Array<{ id: number; name: string }>;
+  availableAccounts?: Array<{ id: string; name: string; balance: number }>;
+}
+
+export interface PreviewResponse {
+  sucesso: boolean;
+  tipo: 'gasto' | 'entrada' | 'mensagem';
+  mensagem: string;
+  dados?: TransactionDraft;
+}
+
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+
+/**
+ * Interpreta texto ou áudio via IA sem salvar no banco (para tela intermediária de confirmação)
+ */
+export async function interpretarTransacao(
+  texto: string,
+  isAudio?: boolean,
+  audioDurationSeconds?: number
+): Promise<PreviewResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/chat/preview`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      message: texto,
+      isAudio: Boolean(isAudio),
+      audioDurationSeconds,
+    }),
+  });
+
+  if (!res.ok) {
+    const erroData = await res.json().catch(() => ({}));
+    throw new Error(erroData.mensagem || `Erro ao interpretar comando: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Confirma e salva o lançamento validado/ajustado no Supabase
+ */
+export async function confirmarTransacao(
+  draft: Partial<TransactionDraft> & { description: string; totalAmount: number; entryType: 'expense' | 'income' }
+): Promise<ChatResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/chat/confirm`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      entryType: draft.entryType,
+      description: draft.description,
+      totalAmount: draft.totalAmount,
+      categoryId: draft.categoryId,
+      paymentMethod: draft.paymentMethod,
+      accountName: draft.accountName,
+      occurredAt: draft.occurredAt,
+      rawInput: draft.originalInput,
+    }),
+  });
+
+  if (!res.ok) {
+    const erroData = await res.json().catch(() => ({}));
+    throw new Error(erroData.mensagem || `Erro ao confirmar transação: ${res.status}`);
+  }
+
+  return res.json();
+}
 
 /**
  * Envia uma mensagem em linguagem natural para o Core Engine do Guará IA

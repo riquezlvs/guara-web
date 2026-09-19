@@ -5,7 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { enviarMensagemChat, ChatResponse } from "@/lib/api";
+import { enviarMensagemChat, interpretarTransacao, TransactionDraft, ChatResponse } from "@/lib/api";
+import { ReviewModal } from "@/components/transaction/review-modal";
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -15,6 +16,9 @@ export function BottomNav() {
   const [inputPlaceholder, setInputPlaceholder] = useState("Ex: Gastei 45 no almoço...");
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [usedVoice, setUsedVoice] = useState(false);
+  const [audioDurationSecs, setAudioDurationSecs] = useState(4);
+  const [reviewDraft, setReviewDraft] = useState<TransactionDraft | null>(null);
   const [popupData, setPopupData] = useState<{
     visible: boolean;
     sucesso: boolean;
@@ -24,6 +28,7 @@ export function BottomNav() {
   } | null>(null);
 
   const recognitionRef = useRef<any>(null);
+  const audioStartTimeRef = useRef<number | null>(null);
 
   // Escuta evento personalizado para preencher prompt (vindo de botões de sugestão)
   useEffect(() => {
@@ -31,6 +36,7 @@ export function BottomNav() {
       const custom = e as CustomEvent<string>;
       if (custom.detail) {
         setQuickInput(custom.detail);
+        setUsedVoice(false);
       }
     };
     window.addEventListener("guara:set-prompt", handleSetPrompt);
@@ -60,6 +66,10 @@ export function BottomNav() {
         recognitionRef.current.stop();
       }
       setIsListening(false);
+      if (audioStartTimeRef.current) {
+        const sec = Math.max(1, Math.round((Date.now() - audioStartTimeRef.current) / 1000));
+        setAudioDurationSecs(sec);
+      }
       setInputPlaceholder("Ex: Gastei 45 no almoço...");
       return;
     }
@@ -73,6 +83,8 @@ export function BottomNav() {
 
       recognition.onstart = () => {
         setIsListening(true);
+        setUsedVoice(true);
+        audioStartTimeRef.current = Date.now();
         setInputPlaceholder("Ouvindo... Pode falar agora!");
       };
 
@@ -94,6 +106,10 @@ export function BottomNav() {
 
       recognition.onend = () => {
         setIsListening(false);
+        if (audioStartTimeRef.current) {
+          const sec = Math.max(1, Math.round((Date.now() - audioStartTimeRef.current) / 1000));
+          setAudioDurationSecs(sec);
+        }
         setInputPlaceholder("Ex: Gastei 45 no almoço...");
       };
 
@@ -110,28 +126,41 @@ export function BottomNav() {
     if (isListening && recognitionRef.current) {
       recognitionRef.current.stop();
       setIsListening(false);
+      if (audioStartTimeRef.current) {
+        const sec = Math.max(1, Math.round((Date.now() - audioStartTimeRef.current) / 1000));
+        setAudioDurationSecs(sec);
+      }
     }
 
     const texto = quickInput.trim();
     if (!texto || isSubmitting) return;
 
+    const isAudio = usedVoice;
+    const durSecs = audioDurationSecs;
+
     setIsSubmitting(true);
     setQuickInput("");
-    setInputPlaceholder("Analisando e salvando com IA...");
+    setUsedVoice(false);
+    setInputPlaceholder("Analisando com IA...");
 
     try {
+      // 1. Tenta interpretar como preview de transação para a tela intermediária
+      const previewResp = await interpretarTransacao(texto, isAudio, durSecs);
+      if (previewResp.sucesso && previewResp.dados) {
+        setReviewDraft(previewResp.dados);
+        return;
+      }
+
+      // 2. Se for uma consulta informativa, resumo ou outro tipo de comando
       const resp: ChatResponse = await enviarMensagemChat(texto);
-      
-      // Exibe popup sinalizando que foi cadastrado com os detalhes
       setPopupData({
         visible: true,
         sucesso: resp.sucesso,
-        mensagem: resp.mensagem || "Lançamento cadastrado com sucesso!",
+        mensagem: resp.mensagem || "Processado com sucesso!",
         dados: resp.dados,
         tipo: resp.tipo,
       });
 
-      // Notifica todas as páginas ativas (Home, Extrato, etc.) para recarregarem os dados
       window.dispatchEvent(new CustomEvent("finances:refresh", { detail: resp }));
       router.refresh();
     } catch (err: any) {
@@ -155,6 +184,24 @@ export function BottomNav() {
 
   return (
     <>
+      {/* Tela Intermediária de Revisão e Confirmação de Lançamento */}
+      {reviewDraft && (
+        <ReviewModal
+          draft={reviewDraft}
+          isOpen={Boolean(reviewDraft)}
+          onClose={() => setReviewDraft(null)}
+          onSuccess={(mensagem) => {
+            setPopupData({
+              visible: true,
+              sucesso: true,
+              mensagem,
+            });
+            window.dispatchEvent(new CustomEvent("finances:refresh"));
+            router.refresh();
+          }}
+        />
+      )}
+
       {/* Modal / Popup de Confirmação de Cadastro */}
       {popupData?.visible && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
