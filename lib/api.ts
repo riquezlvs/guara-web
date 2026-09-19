@@ -562,6 +562,50 @@ export async function ajustarSaldoInvestimento(
 }
 
 /**
+ * Remove / exclui uma instituição ou conta
+ */
+export async function removerInstituicao(
+  accountId: string
+): Promise<{ sucesso: boolean; mensagem: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/investimentos/remover-instituicao`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ accountId }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao remover instituição: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Remove / exclui um ativo de investimento
+ */
+export async function removerAtivo(
+  assetId: string
+): Promise<{ sucesso: boolean; mensagem: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/investimentos/remover-ativo`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ assetId }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao remover ativo: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
  * Obtém o extrato especializado em investimentos, proventos e aportes
  */
 export async function obterExtratoInvestimentos(params?: {

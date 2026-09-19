@@ -6,40 +6,42 @@ import { obterDashboard, DashboardResponse, DashboardRecentItem, interpretarTran
 import { ReviewModal } from "@/components/transaction/review-modal";
 
 type RecentItemGroup = DashboardRecentItem & {
-  installmentNumbers: number[];
+  installmentNumber?: number;
   installmentTotal?: number;
+  cleanDescription: string;
 };
 
 function agruparAtividadesRecentes(items: DashboardRecentItem[]): RecentItemGroup[] {
   const groups = new Map<string, RecentItemGroup>();
+  const list: RecentItemGroup[] = [];
 
   items.forEach((item) => {
     const hasInstallments = Boolean(item.installment_total && item.installment_total > 1);
     const category = item.categories?.name || "Geral";
-    const normalizedDescription = item.description.trim().toLocaleLowerCase();
+    const cleanDescription = hasInstallments
+      ? item.description.replace(/\s*\(?\d+\/\d+\)?\s*$/i, "").trim()
+      : item.description;
+
     const key = hasInstallments
-      ? `installment:${normalizedDescription}:${category}:${item.payment_method}`
+      ? `installment:${cleanDescription.toLowerCase()}:${category}:${item.payment_method}`
       : `single:${item.display_id}`;
-    const current = groups.get(key);
 
-    if (!current) {
-      groups.set(key, {
-        ...item,
-        installmentNumbers: item.installment_number ? [item.installment_number] : [],
-        installmentTotal: item.installment_total || undefined,
-      });
-      return;
+    if (groups.has(key)) {
+      return; // Compra parcelada exibida apenas uma vez
     }
 
-    if (item.installment_number && !current.installmentNumbers.includes(item.installment_number)) {
-      current.installmentNumbers.push(item.installment_number);
-    }
+    const groupedItem: RecentItemGroup = {
+      ...item,
+      cleanDescription,
+      installmentNumber: item.installment_number || 1,
+      installmentTotal: item.installment_total || undefined,
+    };
+
+    groups.set(key, groupedItem);
+    list.push(groupedItem);
   });
 
-  return Array.from(groups.values()).map((item) => ({
-    ...item,
-    installmentNumbers: item.installmentNumbers.sort((a, b) => a - b),
-  }));
+  return list;
 }
 
 export default function Home() {
@@ -757,8 +759,12 @@ export default function Home() {
                 });
                 const categoriaNome = item.categories?.name || "Geral";
                 return (
-                  <div key={item.display_id || idx}>
-                    <div className="p-4 flex items-center justify-between hover:bg-[#fafafa] transition-colors">
+                  <Link
+                    key={item.display_id || idx}
+                    href={`/extrato/${item.display_id}`}
+                    className="block hover:bg-[#fafafa] transition-colors focus-visible:outline-none"
+                  >
+                    <div className="p-4 flex items-center justify-between">
                       <div className="flex items-center gap-3 min-w-0">
                         <div className="w-9 h-9 rounded-[18px] bg-[#f5f5f5] flex items-center justify-center text-[#0a0a0a] shrink-0">
                           <span className="material-symbols-outlined text-[18px]">
@@ -772,33 +778,32 @@ export default function Home() {
                         <div className="flex flex-col min-w-0">
                           <div className="flex items-center gap-1.5">
                             <span className="text-[14px] font-medium text-[#0a0a0a] truncate">
-                              {item.description}
+                              {item.cleanDescription}
                             </span>
                             <span className="px-1.5 py-0.5 text-[10px] tracking-tight uppercase bg-[#f5f5f5] text-[#737373] rounded-md font-normal">
                               {categoriaNome}
                             </span>
                           </div>
                           <span className="text-[12px] text-[#737373]">
-                            {item.installmentTotal && item.installmentNumbers.length > 0
-                              ? `Parcelas ${item.installmentNumbers.join(", ")} de ${item.installmentTotal} • `
-                              : `${dataFormatada} via `}
-                            {item.payment_method?.replace("_", " ") || "Transação"}
+                            {dataFormatada} via {item.payment_method?.replace("_", " ") || "Transação"}
                           </span>
                         </div>
                       </div>
-                      <span className="text-right text-[14px] font-semibold text-[#0a0a0a] whitespace-nowrap pl-2 font-mono">
-                        <span className="block">
+                      <div className="text-right pl-2 shrink-0 flex flex-col items-end">
+                        <span className="text-[14px] font-semibold text-[#0a0a0a] font-mono">
                           -R$ {Number(item.total_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
                         </span>
                         {item.installmentTotal && (
-                          <span className="block text-[10px] font-normal text-[#737373]">por parcela</span>
+                          <span className="inline-flex items-center gap-1 text-[10px] text-[#737373] bg-[#f5f5f5] px-1.5 py-0.5 rounded-[6px] font-mono mt-0.5">
+                            Parcela {item.installmentNumber || 1}/{item.installmentTotal}x
+                          </span>
                         )}
-                      </span>
+                      </div>
                     </div>
                     {idx < visibleItems.length - 1 && (
                       <div className="h-[1px] bg-[#f5f5f5] w-full" />
                     )}
-                  </div>
+                  </Link>
                 );
               })
             ) : (

@@ -216,10 +216,17 @@ export default function ExtratoInvestimentosPage() {
                 {resumoMes.variacaoVsMesAnterior}
               </span>
             </div>
-            <div className="flex items-baseline gap-1">
-              <span className="font-headline-md text-[24px] font-semibold text-ink">
-                +R$ {resumoMes.totalAportado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-              </span>
+            <div className="flex items-baseline gap-1 min-h-[36px]">
+              {isLoading ? (
+                <div className="flex items-center gap-2 text-mid-gray">
+                  <span className="material-symbols-outlined text-[20px] animate-spin">progress_activity</span>
+                  <span className="text-[13px] font-medium animate-pulse">Carregando aportes...</span>
+                </div>
+              ) : (
+                <span className="font-headline-md text-[24px] font-semibold text-ink">
+                  +R$ {resumoMes.totalAportado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+              )}
             </div>
           </div>
 
@@ -315,16 +322,27 @@ export default function ExtratoInvestimentosPage() {
 
         {/* Chronological Movement Stream */}
         <div className="flex flex-col gap-4">
-          {Object.entries(grupos).map(([mesGrupo, itens]) => (
-            <div key={mesGrupo} className="flex flex-col gap-2.5">
-              <div className="flex items-center justify-between px-1">
-                <span className="font-caption text-caption text-mid-gray uppercase tracking-wider font-semibold text-[11px]">
-                  {mesGrupo}
-                </span>
-                <span className="font-caption text-caption text-mid-gray text-[11px]">
-                  {itens.length} transações
-                </span>
-              </div>
+          {isLoading ? (
+            <div className="p-8 text-center flex flex-col items-center justify-center gap-2 text-mid-gray">
+              <span className="material-symbols-outlined text-[24px] animate-spin">progress_activity</span>
+              <span className="text-[13px] font-medium text-ink">Carregando movimentações...</span>
+              <span className="text-[11px] text-mid-gray">Consultando base de dados</span>
+            </div>
+          ) : Object.keys(grupos).length === 0 ? (
+            <div className="p-6 text-center text-mid-gray text-[13px] bg-paper rounded-[18px]">
+              Nenhuma movimentação de investimento encontrada.
+            </div>
+          ) : (
+            Object.entries(grupos).map(([mesGrupo, itens]) => (
+              <div key={mesGrupo} className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between px-1">
+                  <span className="font-caption text-caption text-mid-gray uppercase tracking-wider font-semibold text-[11px]">
+                    {mesGrupo}
+                  </span>
+                  <span className="font-caption text-caption text-mid-gray text-[11px]">
+                    {itens.length} transações
+                  </span>
+                </div>
 
               {itens.map((item) => (
                 <article
@@ -366,7 +384,7 @@ export default function ExtratoInvestimentosPage() {
                 </article>
               ))}
             </div>
-          ))}
+          )))}
         </div>
 
         {/* End of Feed Subtle Indicator */}

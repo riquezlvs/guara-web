@@ -237,6 +237,7 @@ export default function NovoAtivoPage() {
                 className="w-full h-11 pl-10 pr-9 rounded-[18px] bg-paper text-ink font-body-md text-body-md shadow-sm outline-none appearance-none focus:bg-surface-alt transition-colors cursor-pointer"
               >
                 <option value="XP Investimentos">XP Investimentos</option>
+                <option value="Caixinha Nubank">Caixinha Nubank</option>
                 <option value="Nubank / NuInvest">Nubank / NuInvest</option>
                 <option value="BTG Pactual">BTG Pactual</option>
                 <option value="Binance">Binance</option>
