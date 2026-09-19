@@ -5,6 +5,7 @@ import Link from "next/link";
 import {
   obterInvestimentos,
   ajustarSaldoInvestimento,
+  editarInstituicaoCompleta,
   removerInstituicao,
   InvestimentosData,
   InstituicaoItem,
@@ -16,10 +17,14 @@ export default function InvestimentosPage() {
   const [isHidden, setIsHidden] = useState(false);
   const [periodoAtivo, setPeriodoAtivo] = useState<"1M" | "6M" | "1A" | "TUDO">("1A");
 
-  // Modal Ajustar Saldo / Editar / Excluir
+  // Modal Ajustar / Editar Todas as Informações / Excluir Instituição
   const [modalAjusteAberto, setModalAjusteAberto] = useState(false);
   const [instituicaoSelecionada, setInstituicaoSelecionada] = useState<InstituicaoItem | null>(null);
-  const [novoSaldoInput, setNovoSaldoInput] = useState("");
+  const [editNome, setEditNome] = useState("");
+  const [editTipo, setEditTipo] = useState<"fixed_income" | "investment_broker" | "checking" | "benefit">("fixed_income");
+  const [editSaldo, setEditSaldo] = useState("");
+  const [editCdiRate, setEditCdiRate] = useState("");
+  const [editStartDate, setEditStartDate] = useState("");
   const [salvandoAjuste, setSalvandoAjuste] = useState(false);
   const [removendoInstituicao, setRemovendoInstituicao] = useState(false);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
@@ -47,11 +52,46 @@ export default function InvestimentosPage() {
     return () => window.removeEventListener("finances:refresh", handleRefresh);
   }, [carregarDados]);
 
-  // Abre modal para ajustar saldo ou excluir instituição
+  // Formatador de moeda para digitação em tempo real
+  const formatCurrency = (val: string) => {
+    const digits = val.replace(/\D/g, "");
+    if (!digits) return "";
+    const num = Number(digits) / 100;
+    return num.toLocaleString("pt-BR", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const parseCurrencyNumber = (formatted: string) => {
+    if (!formatted) return 0;
+    const clean = formatted.replace(/\./g, "").replace(",", ".");
+    const num = parseFloat(clean);
+    return isNaN(num) ? 0 : num;
+  };
+
+  const popularCamposEdicao = (alvo: InstituicaoItem | null) => {
+    if (!alvo) return;
+    setInstituicaoSelecionada(alvo);
+    setEditNome(alvo.name || "");
+    const tipoDetectado = (alvo.type as any) ||
+      (alvo.subtitle.toLowerCase().includes("fixa") ? "fixed_income" : "investment_broker");
+    setEditTipo(tipoDetectado);
+    setEditSaldo(
+      alvo.balance !== undefined
+        ? alvo.balance.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : ""
+    );
+    setEditCdiRate(alvo.cdi_rate ? String(alvo.cdi_rate) : "");
+    setEditStartDate(
+      alvo.start_date ? alvo.start_date.substring(0, 10) : ""
+    );
+  };
+
+  // Abre modal para editar todas as informações da instituição ou excluí-la
   const abrirModalAjuste = (inst?: InstituicaoItem) => {
     const alvo = inst || (data?.instituicoes && data.instituicoes[0]) || null;
-    setInstituicaoSelecionada(alvo);
-    setNovoSaldoInput(alvo ? alvo.balance.toFixed(2).replace(".", ",") : "");
+    popularCamposEdicao(alvo);
     setMensagemAjuste(null);
     setConfirmandoExclusao(false);
     setModalAjusteAberto(true);
@@ -61,31 +101,32 @@ export default function InvestimentosPage() {
     e.preventDefault();
     if (!instituicaoSelecionada) return;
 
-    const valorNumerico = parseFloat(
-      novoSaldoInput.replace(/\./g, "").replace(",", ".")
-    );
-
-    if (isNaN(valorNumerico)) {
-      setMensagemAjuste("Digite um valor numérico válido.");
+    if (!editNome.trim()) {
+      setMensagemAjuste("Informe o nome da instituição ou ativo.");
       return;
     }
 
+    const valorNumerico = parseCurrencyNumber(editSaldo);
+
     setSalvandoAjuste(true);
     try {
-      await ajustarSaldoInvestimento({
+      await editarInstituicaoCompleta({
         accountId: instituicaoSelecionada.id,
-        name: instituicaoSelecionada.name,
-        novoSaldo: valorNumerico,
+        name: editNome.trim(),
+        type: editTipo,
+        balance: valorNumerico,
+        cdi_rate: editCdiRate ? parseFloat(editCdiRate) : null,
+        start_date: editStartDate ? editStartDate : null,
       });
 
-      setMensagemAjuste("Saldo atualizado com sucesso!");
+      setMensagemAjuste("Instituição e informações atualizadas com sucesso!");
       window.dispatchEvent(new CustomEvent("finances:refresh"));
       setTimeout(() => {
         setModalAjusteAberto(false);
         carregarDados();
-      }, 600);
+      }, 700);
     } catch (err: any) {
-      setMensagemAjuste(err.message || "Erro ao atualizar saldo.");
+      setMensagemAjuste(err.message || "Erro ao salvar alterações da instituição.");
     } finally {
       setSalvandoAjuste(false);
     }
@@ -506,21 +547,22 @@ export default function InvestimentosPage() {
         </section>
       </div>
 
-      {/* Modal Interativo para Ajustar Saldo / Editar / Excluir Instituição */}
+      {/* Modal Interativo para Editar Todas as Informações / Excluir Instituição */}
       {modalAjusteAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="w-full max-w-sm bg-white rounded-[28px] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-black/5 flex flex-col gap-4 animate-in zoom-in-95 duration-200">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-9 h-9 rounded-[14px] bg-[#f5f5f5] flex items-center justify-center text-[#0a0a0a]">
-                  <span className="material-symbols-outlined text-[20px]">account_balance</span>
+          <div className="w-full max-w-md bg-white rounded-[28px] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-black/5 flex flex-col gap-4 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            {/* Cabeçalho */}
+            <div className="flex items-center justify-between pb-1 border-b border-black/5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-[14px] bg-[#f5f5f5] flex items-center justify-center text-[#0a0a0a]">
+                  <span className="material-symbols-outlined text-[22px]">tune</span>
                 </div>
                 <div>
                   <h3 className="text-[16px] font-semibold text-[#0a0a0a] tracking-tight">
                     Editar Instituição
                   </h3>
                   <span className="text-[12px] text-[#737373]">
-                    {instituicaoSelecionada?.name || "Gerenciamento de Conta"}
+                    Atualize qualquer dado ou remova a conta
                   </span>
                 </div>
               </div>
@@ -534,21 +576,22 @@ export default function InvestimentosPage() {
             </div>
 
             <form onSubmit={handleSalvarAjuste} className="flex flex-col gap-3.5">
+              {/* Selecionar Instituição se houver mais de uma */}
               <div>
                 <label className="text-[11px] uppercase tracking-wider text-[#737373] block mb-1 font-medium">
-                  Instituição Selecionada
+                  Instituição / Conta
                 </label>
                 <select
                   value={instituicaoSelecionada?.id || ""}
                   onChange={(e) => {
                     const inst = instituicoes.find((i) => i.id === e.target.value);
                     if (inst) {
-                      setInstituicaoSelecionada(inst);
-                      setNovoSaldoInput(inst.balance.toFixed(2).replace(".", ","));
+                      popularCamposEdicao(inst);
                       setConfirmandoExclusao(false);
+                      setMensagemAjuste(null);
                     }
                   }}
-                  className="w-full h-11 px-3 bg-[#fafafa] rounded-[18px] text-[13px] text-[#0a0a0a] font-medium outline-none border border-black/5 cursor-pointer"
+                  className="w-full h-11 px-3 bg-[#fafafa] rounded-[16px] text-[13px] text-[#0a0a0a] font-medium outline-none border border-black/5 cursor-pointer focus:bg-white focus:border-black/20"
                 >
                   {instituicoes.map((i) => (
                     <option key={i.id} value={i.id}>
@@ -558,9 +601,42 @@ export default function InvestimentosPage() {
                 </select>
               </div>
 
+              {/* Nome da Instituição / Ativo */}
               <div>
                 <label className="text-[11px] uppercase tracking-wider text-[#737373] block mb-1 font-medium">
-                  Novo Saldo Consolidado
+                  Nome da Instituição ou Ativo
+                </label>
+                <input
+                  type="text"
+                  value={editNome}
+                  onChange={(e) => setEditNome(e.target.value)}
+                  placeholder="Ex: Nubank, Caixinha 115%, XP..."
+                  className="w-full h-11 px-3 bg-[#fafafa] rounded-[16px] text-[14px] text-[#0a0a0a] font-medium outline-none border border-black/5 focus:bg-white focus:border-black/20"
+                  required
+                />
+              </div>
+
+              {/* Tipo de Conta / Categoria */}
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-[#737373] block mb-1 font-medium">
+                  Tipo de Conta / Alocação
+                </label>
+                <select
+                  value={editTipo}
+                  onChange={(e) => setEditTipo(e.target.value as any)}
+                  className="w-full h-11 px-3 bg-[#fafafa] rounded-[16px] text-[13px] text-[#0a0a0a] font-medium outline-none border border-black/5 cursor-pointer focus:bg-white focus:border-black/20"
+                >
+                  <option value="fixed_income">Renda Fixa / Caixinha / CDB</option>
+                  <option value="investment_broker">Corretora de Ações / FIIs</option>
+                  <option value="checking">Conta Corrente / Reserva</option>
+                  <option value="benefit">Conta Benefício</option>
+                </select>
+              </div>
+
+              {/* Saldo Consolidado */}
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-[#737373] block mb-1 font-medium">
+                  Saldo Consolidado
                 </label>
                 <div className="relative flex items-center">
                   <span className="absolute left-3.5 text-[14px] text-[#737373] font-mono">
@@ -568,42 +644,108 @@ export default function InvestimentosPage() {
                   </span>
                   <input
                     type="text"
-                    value={novoSaldoInput}
-                    onChange={(e) => setNovoSaldoInput(e.target.value)}
+                    value={editSaldo}
+                    onChange={(e) => setEditSaldo(formatCurrency(e.target.value))}
                     placeholder="0,00"
-                    className="w-full h-11 pl-10 pr-3 bg-[#fafafa] rounded-[18px] text-[15px] text-[#0a0a0a] font-mono outline-none border border-black/5 focus:bg-white focus:border-black/20"
+                    className="w-full h-11 pl-10 pr-3 bg-[#fafafa] rounded-[16px] text-[15px] text-[#0a0a0a] font-mono outline-none border border-black/5 focus:bg-white focus:border-black/20"
                     required
+                  />
+                </div>
+              </div>
+
+              {/* Taxa % CDI (Apenas se for Renda Fixa ou se preenchido) */}
+              {editTipo === "fixed_income" && (
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="text-[11px] uppercase tracking-wider text-[#737373] font-medium">
+                      Rentabilidade (% do CDI)
+                    </label>
+                    <span className="text-[11px] text-[#737373]">Apenas números</span>
+                  </div>
+                  <div className="relative flex items-center">
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={editCdiRate}
+                      onChange={(e) => setEditCdiRate(e.target.value.replace(/\D/g, ""))}
+                      placeholder="Ex: 100, 115"
+                      className="w-full h-11 pl-3 pr-8 bg-[#fafafa] rounded-[16px] text-[14px] text-[#0a0a0a] font-mono outline-none border border-black/5 focus:bg-white focus:border-black/20"
+                    />
+                    <span className="absolute right-3.5 text-[13px] text-[#737373] font-mono font-medium">
+                      %
+                    </span>
+                  </div>
+
+                  {/* Pílulas de 1 Toque */}
+                  <div className="flex items-center gap-1.5 mt-1.5">
+                    {["100", "110", "115", "120"].map((tx) => (
+                      <button
+                        key={tx}
+                        type="button"
+                        onClick={() => setEditCdiRate(tx)}
+                        className={`flex-1 py-1 rounded-[10px] text-[11px] font-medium transition-all cursor-pointer ${
+                          editCdiRate === tx
+                            ? "bg-black text-white"
+                            : "bg-[#f5f5f5] text-[#737373] hover:text-[#0a0a0a]"
+                        }`}
+                      >
+                        {tx}% {tx === "115" ? "Nubank" : ""}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Data de Início / Aporte com Calendário Nativo */}
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-[#737373] block mb-1 font-medium">
+                  Data de Início / Aporte
+                </label>
+                <div className="relative flex items-center">
+                  <input
+                    type="date"
+                    value={editStartDate}
+                    onChange={(e) => setEditStartDate(e.target.value)}
+                    className="w-full h-11 px-3 bg-[#fafafa] rounded-[16px] text-[13px] text-[#0a0a0a] outline-none border border-black/5 focus:bg-white focus:border-black/20 cursor-pointer"
                   />
                 </div>
               </div>
 
               {mensagemAjuste && (
                 <div
-                  className={`p-2.5 rounded-[14px] text-[12px] ${
+                  className={`p-2.5 rounded-[14px] text-[12px] flex items-center gap-2 ${
                     mensagemAjuste.includes("sucesso")
                       ? "bg-emerald-50 text-emerald-700"
                       : "bg-rose-50 text-rose-600"
                   }`}
                 >
-                  {mensagemAjuste}
+                  <span className="material-symbols-outlined text-[16px]">
+                    {mensagemAjuste.includes("sucesso") ? "check_circle" : "error"}
+                  </span>
+                  <span>{mensagemAjuste}</span>
                 </div>
               )}
 
               {/* Botões de Ação */}
-              <div className="flex items-center gap-2 pt-1">
+              <div className="flex items-center gap-2 pt-2">
                 <button
                   type="button"
                   onClick={() => setModalAjusteAberto(false)}
-                  className="flex-1 h-10 rounded-[18px] bg-[#f5f5f5] text-[#0a0a0a] text-[13px] font-medium hover:bg-[#e8e8e8] cursor-pointer"
+                  className="flex-1 h-11 rounded-[16px] bg-[#f5f5f5] text-[#0a0a0a] text-[13px] font-medium hover:bg-[#e8e8e8] cursor-pointer transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
                   disabled={salvandoAjuste}
-                  className="flex-1 h-10 rounded-[18px] bg-black text-white text-[13px] font-medium hover:bg-neutral-800 disabled:opacity-50 cursor-pointer"
+                  className="flex-1 h-11 rounded-[16px] bg-black text-white text-[13px] font-medium hover:bg-neutral-800 disabled:opacity-50 cursor-pointer transition-colors flex items-center justify-center gap-1.5"
                 >
-                  {salvandoAjuste ? "Salvando..." : "Salvar Saldo"}
+                  {salvandoAjuste && (
+                    <span className="material-symbols-outlined animate-spin text-[16px]">
+                      progress_activity
+                    </span>
+                  )}
+                  <span>{salvandoAjuste ? "Salvando..." : "Salvar Alterações"}</span>
                 </button>
               </div>
 
@@ -613,7 +755,7 @@ export default function InvestimentosPage() {
                   type="button"
                   onClick={handleRemoverInstituicao}
                   disabled={removendoInstituicao}
-                  className={`w-full h-9 rounded-[16px] text-[12px] font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
+                  className={`w-full h-10 rounded-[16px] text-[12px] font-medium flex items-center justify-center gap-1.5 transition-all cursor-pointer ${
                     confirmandoExclusao
                       ? "bg-rose-600 text-white animate-pulse"
                       : "bg-rose-50 text-rose-600 hover:bg-rose-100"

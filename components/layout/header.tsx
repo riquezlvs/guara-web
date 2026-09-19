@@ -6,10 +6,21 @@ import { Badge } from "@/components/ui/badge";
 export function Header() {
   const pathname = usePathname();
 
+  // Esconde o Header global em telas dedicadas que possuem seu próprio cabeçalho / barra superior
+  if (
+    pathname.includes("/editar") ||
+    pathname.includes("/dividir") ||
+    pathname.includes("/novo") ||
+    pathname.startsWith("/quem-me-deve")
+  ) {
+    return null;
+  }
+
   const getPageTitle = () => {
     if (pathname === "/") return "Início";
     if (pathname.startsWith("/extrato")) return "Extrato";
     if (pathname.startsWith("/cartoes")) return "Cartões";
+    if (pathname.startsWith("/quem-me-deve")) return "Quem Me Deve";
     if (pathname.startsWith("/investimentos")) return "Investimentos";
     return "Finanças";
   };

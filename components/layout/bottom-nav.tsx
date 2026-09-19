@@ -290,12 +290,13 @@ export function BottomNav() {
       )}
 
       {/* Barra Inferior com Entrada Rápida de Texto e Áudio */}
-      <div className="fixed bottom-0 w-full z-40 pb-safe pointer-events-none">
-        <div className="px-4 pb-5 flex flex-col gap-2 w-full max-w-md mx-auto">
-          {/* Campo de comando rápido com IA */}
-          <div className="pointer-events-auto bg-white/95 backdrop-blur-xl p-1.5 pl-3 rounded-[20px] border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2">
-            {/* Botão de Áudio / Microfone */}
-            <button
+      {!pathname.includes("/editar") && !pathname.includes("/dividir") && !pathname.includes("/novo") && (
+        <div className="fixed bottom-0 w-full z-40 pb-safe pointer-events-none">
+          <div className="px-4 pb-5 flex flex-col gap-2 w-full max-w-md mx-auto">
+            {/* Campo de comando rápido com IA */}
+            <div className="pointer-events-auto bg-white/95 backdrop-blur-xl p-1.5 pl-3 rounded-[20px] border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2">
+              {/* Botão de Áudio / Microfone */}
+              <button
               type="button"
               onClick={toggleListening}
               title={isListening ? "Parar de ouvir" : "Falar despesa por áudio"}
@@ -359,6 +360,7 @@ export function BottomNav() {
           </nav>
         </div>
       </div>
+      )}
     </>
   );
 }

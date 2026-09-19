@@ -411,6 +411,8 @@ export interface InstituicaoItem {
   balance: number;
   subtitle: string;
   monthlyVariation: string;
+  cdi_rate?: number | null;
+  start_date?: string | null;
 }
 
 export interface EvolucaoPeriodo {
@@ -633,4 +635,156 @@ export async function obterExtratoInvestimentos(params?: {
 
   return res.json();
 }
+
+/**
+ * Edita todas as informações de uma instituição / conta conectada
+ */
+export async function editarInstituicaoCompleta(dados: {
+  accountId: string;
+  name: string;
+  type: string;
+  balance: number;
+  cdi_rate?: number | null;
+  start_date?: string | null;
+}): Promise<{ sucesso: boolean; mensagem: string; dados: any }> {
+  const res = await fetch(`${API_BASE_URL}/api/investimentos/editar-instituicao`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(dados),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao editar instituição: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export interface PessoaItem {
+  id: string;
+  name: string;
+  created_at?: string;
+  initials: string;
+  saldoDevedor: number;
+  totalOriginal: number;
+  totalPago: number;
+  status: 'Em aberto' | 'Zerado';
+  itensInclusos?: Array<{
+    displayId?: number;
+    description: string;
+    amount: number;
+    occurredAt?: string;
+  }>;
+}
+
+export interface ResumoQuemMeDeve {
+  totalAReceber: number;
+  faturaCartao: number;
+  nomeCartao: string;
+  percentualFatura: number;
+  pendentesCount: number;
+  totalPago: number;
+  devedores: Array<{
+    nome: string;
+    valor: number;
+    total?: number;
+    totalMes?: number;
+    parcelas?: Array<{
+      displayId?: number;
+      descricao?: string;
+      valor: number;
+      numero?: number;
+      total?: number;
+      ocorreuEm?: string;
+    }>;
+  }>;
+}
+
+/**
+ * Obtém a lista de pessoas do banco de dados com seus saldos devedores calculados
+ */
+export async function obterPessoas(busca?: string): Promise<{ sucesso: boolean; dados: PessoaItem[] }> {
+  const query = busca ? `?busca=${encodeURIComponent(busca)}` : '';
+  const res = await fetch(`${API_BASE_URL}/api/people${query}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error(`Erro ao obter pessoas: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Cadastra uma nova pessoa diretamente no banco de dados
+ */
+export async function cadastrarPessoa(nome: string): Promise<{ sucesso: boolean; dados: { id: string; name: string }; mensagem: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/people`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ name: nome }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao cadastrar pessoa: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Registra o pagamento / baixa de uma dívida de uma pessoa
+ */
+export async function registrarPagamentoDivida(params: {
+  personId?: string;
+  nome?: string;
+  valor: number;
+  nota?: string;
+}): Promise<{ sucesso: boolean; mensagem: string; dados?: any }> {
+  const res = await fetch(`${API_BASE_URL}/api/debts/pay`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao registrar pagamento: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Obtém resumo estatístico consolidado para o card de topo de Quem Me Deve
+ */
+export async function obterResumoQuemMeDeve(): Promise<{ sucesso: boolean; dados: ResumoQuemMeDeve }> {
+  const res = await fetch(`${API_BASE_URL}/api/debts/summary`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    cache: 'no-store',
+  });
+
+  if (!res.ok) {
+    throw new Error(`Erro ao obter resumo de dívidas: ${res.status}`);
+  }
+
+  return res.json();
+}
+
 

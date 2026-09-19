@@ -15,7 +15,7 @@ export default function NovoCartaoPage() {
   const [cardHolder, setCardHolder] = useState("LUCAS M. SILVEIRA");
   const [lastFour, setLastFour] = useState("4091");
   const [colorTheme, setColorTheme] = useState("titanium"); // titanium, slate, warm, light
-  const [cardType, setCardType] = useState<"credit" | "meal_voucher" | "food_voucher">("credit");
+  const [cardType, setCardType] = useState<"credit" | "debit" | "meal_voucher" | "food_voucher">("credit");
   const [isVirtual, setIsVirtual] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -133,6 +133,8 @@ export default function NovoCartaoPage() {
               <span className="text-[10px] uppercase opacity-60 tracking-wider block mb-0.5">
                 {cardType === "credit"
                   ? "Cartão de Crédito"
+                  : cardType === "debit"
+                  ? "Cartão de Débito"
                   : cardType === "meal_voucher"
                   ? "Vale-Refeição"
                   : "Vale-Alimentação"}
@@ -154,7 +156,7 @@ export default function NovoCartaoPage() {
             <div className="mt-3 pt-3 border-t border-current/10 flex items-end justify-between relative z-10">
               <div>
                 <span className="text-[9px] uppercase tracking-widest opacity-60 block mb-0.5">
-                  Limite do Cartão
+                  {cardType === "debit" ? "Limite / Saldo Vinculado" : "Limite do Cartão"}
                 </span>
                 <span className="text-[18px] font-mono font-semibold tracking-tight">
                   R$ {limit || "0,00"}
@@ -162,10 +164,10 @@ export default function NovoCartaoPage() {
               </div>
               <div className="text-right">
                 <span className="text-[9px] uppercase tracking-widest opacity-60 block mb-0.5">
-                  Vencimento
+                  {cardType === "debit" ? "Débito em Conta" : "Vencimento"}
                 </span>
                 <span className="text-[14px] font-mono font-medium">
-                  {dueDay ? `Dia ${dueDay}` : "--"}
+                  {cardType === "debit" ? "Imediato" : dueDay ? `Dia ${dueDay}` : "--"}
                 </span>
               </div>
             </div>
@@ -213,6 +215,7 @@ export default function NovoCartaoPage() {
                   className="w-full h-9 px-2.5 bg-[#f5f5f5] rounded-[14px] text-[12px] text-[#0a0a0a] outline-none font-medium"
                 >
                   <option value="credit">Crédito</option>
+                  <option value="debit">Débito</option>
                   <option value="meal_voucher">Vale Refeição</option>
                   <option value="food_voucher">Vale Alimentação</option>
                 </select>

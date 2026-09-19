@@ -114,14 +114,13 @@ export default function TransactionDetailsPage() {
           <span className="text-[10px] text-[#737373] uppercase tracking-[0.16em] truncate">
             Detalhes do lançamento
           </span>
-          <button
-            type="button"
-            onClick={() => showToast("Editor técnico de lançamento aberto")}
+          <Link
+            href={`/extrato/${params.id || transaction.display_id}/editar`}
             className="h-9 px-3 rounded-full bg-[#0a0a0a] text-white flex items-center gap-1.5 text-[12px] font-medium hover:bg-[#171717] active:scale-95 transition-all"
           >
             <span className="material-symbols-outlined text-[16px]">edit</span>
             Editar
-          </button>
+          </Link>
         </section>
 
         <section className="rounded-[24px] bg-white shadow-sm p-6 flex flex-col items-center text-center overflow-hidden">
@@ -252,9 +251,28 @@ export default function TransactionDetailsPage() {
         </section>
 
         <section className="flex flex-col gap-2">
-          <button type="button" onClick={() => showToast("Editor de dados aberto")} className="w-full h-12 rounded-[18px] bg-[#0a0a0a] text-white text-[13px] font-medium flex items-center justify-center gap-2 hover:bg-[#171717] active:scale-[0.99] transition-all"><span className="material-symbols-outlined text-[18px]">edit_note</span>Editar dados da transação</button>
-          <button type="button" onClick={() => showToast("Calculadora de rateio ativada")} className="w-full h-12 rounded-[18px] bg-white text-[#0a0a0a] text-[13px] font-medium flex items-center justify-center gap-2 shadow-sm hover:bg-[#fafafa] active:scale-[0.99] transition-all"><span className="material-symbols-outlined text-[18px]">call_split</span>Dividir despesa com amigos</button>
-          <button type="button" onClick={confirmDelete} className="h-10 self-center px-3 rounded-full text-[#e7000b] text-[12px] flex items-center gap-1.5 hover:bg-red-50 active:scale-95 transition-all"><span className="material-symbols-outlined text-[16px]">delete_forever</span>Excluir ou contestar lançamento</button>
+          <Link
+            href={`/extrato/${params.id || transaction.display_id}/editar`}
+            className="w-full h-12 rounded-[18px] bg-[#0a0a0a] text-white text-[13px] font-medium flex items-center justify-center gap-2 hover:bg-[#171717] active:scale-[0.99] transition-all"
+          >
+            <span className="material-symbols-outlined text-[18px]">edit_note</span>
+            Editar dados da transação
+          </Link>
+          <Link
+            href={`/extrato/${params.id || transaction.display_id}/dividir`}
+            className="w-full h-12 rounded-[18px] bg-white text-[#0a0a0a] text-[13px] font-medium flex items-center justify-center gap-2 shadow-sm hover:bg-[#fafafa] active:scale-[0.99] transition-all"
+          >
+            <span className="material-symbols-outlined text-[18px]">call_split</span>
+            Dividir despesa com amigos
+          </Link>
+          <button
+            type="button"
+            onClick={confirmDelete}
+            className="h-10 self-center px-3 rounded-full text-[#e7000b] text-[12px] flex items-center gap-1.5 hover:bg-red-50 active:scale-95 transition-all"
+          >
+            <span className="material-symbols-outlined text-[16px]">delete_forever</span>
+            Excluir ou contestar lançamento
+          </button>
         </section>
       </div>
       {toast && <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[60] bg-[#0a0a0a] text-white px-5 py-2.5 rounded-full text-[12px] shadow-lg whitespace-nowrap">{toast}</div>}

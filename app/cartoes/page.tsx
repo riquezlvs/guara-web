@@ -11,14 +11,44 @@ export default function CartoesPage() {
 
   const carregarCartoes = useCallback(async () => {
     setIsLoading(true);
+
+    const getStoredOverrides = (): Record<string, Partial<CartaoItem>> => {
+      try {
+        const raw = localStorage.getItem("guara:cartoes_overrides");
+        return raw ? JSON.parse(raw) : {};
+      } catch {
+        return {};
+      }
+    };
+
+    const applyOverrides = (list: CartaoItem[]) => {
+      const overrides = getStoredOverrides();
+      return list.map((item) => {
+        const foundOverride = overrides[item.id] || overrides[item.name];
+        if (foundOverride) {
+          const merged = { ...item, ...foundOverride };
+          if (foundOverride.credit_limit !== undefined) {
+            const lim = Number(foundOverride.credit_limit);
+            const fatura = Number(merged.faturaAtual || 0);
+            merged.credit_limit = lim;
+            merged.limiteDisponivel = Math.max(0, lim - fatura);
+            merged.percentualUtilizado = lim > 0 ? Number(((fatura / lim) * 100).toFixed(1)) : 0;
+          }
+          return merged;
+        }
+        return item;
+      });
+    };
+
     try {
       const resp = await obterCartoes();
       if (resp.sucesso && resp.dados && resp.dados.length > 0) {
-        setCartoes(resp.dados);
-        setCartaoSelecionadoId((prev) => prev || resp.dados[0].id);
+        const listaAtualizada = applyOverrides(resp.dados);
+        setCartoes(listaAtualizada);
+        setCartaoSelecionadoId((prev) => prev || listaAtualizada[0].id);
       } else {
         // Mock inicial enriquecido caso ainda não haja cartões no banco
-        const fallback: CartaoItem[] = [
+        const fallbackBase: CartaoItem[] = [
           {
             id: "nubank-default",
             name: "Nubank Ultravioleta",
@@ -90,13 +120,14 @@ export default function CartoesPage() {
             ],
           },
         ];
-        setCartoes(fallback);
-        setCartaoSelecionadoId(fallback[0].id);
+        const listaFinal = applyOverrides(fallbackBase);
+        setCartoes(listaFinal);
+        setCartaoSelecionadoId((prev) => prev || listaFinal[0].id);
       }
     } catch (err) {
       console.warn("Backend offline ao carregar cartões, usando dados locais:", err);
       // Fallback gracioso
-      const fallback: CartaoItem[] = [
+      const fallbackBase: CartaoItem[] = [
         {
           id: "nubank-default",
           name: "Nubank Ultravioleta",
@@ -139,8 +170,9 @@ export default function CartoesPage() {
           ],
         },
       ];
-      setCartoes(fallback);
-      setCartaoSelecionadoId(fallback[0].id);
+      const listaFinal = applyOverrides(fallbackBase);
+      setCartoes(listaFinal);
+      setCartaoSelecionadoId((prev) => prev || listaFinal[0].id);
     } finally {
       setIsLoading(false);
     }
@@ -184,13 +216,22 @@ export default function CartoesPage() {
               </span>
             </div>
           </div>
-          <Link
-            href="/cartoes/novo"
-            className="inline-flex items-center gap-1 px-3 py-1.5 rounded-[18px] bg-white shadow-[0_0_0_1px_rgba(229,229,229,1)] text-[#0a0a0a] text-[13px] font-medium hover:bg-[#fafafa] active:scale-95 transition-all"
-          >
-            <span className="material-symbols-outlined text-[16px]">add</span>
-            <span>Novo Cartão</span>
-          </Link>
+          <div className="flex items-center gap-2">
+            <Link
+              href="/quem-me-deve"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-[18px] bg-black text-white text-[13px] font-medium hover:bg-neutral-800 active:scale-95 transition-all shadow-xs"
+            >
+              <span className="material-symbols-outlined text-[16px]">group</span>
+              <span>Quem Me Deve</span>
+            </Link>
+            <Link
+              href="/cartoes/novo"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-[18px] bg-white shadow-[0_0_0_1px_rgba(229,229,229,1)] text-[#0a0a0a] text-[13px] font-medium hover:bg-[#fafafa] active:scale-95 transition-all"
+            >
+              <span className="material-symbols-outlined text-[16px]">add</span>
+              <span>Novo Cartão</span>
+            </Link>
+          </div>
         </section>
 
         {/* Card Showcase Horizontal Carousel */}

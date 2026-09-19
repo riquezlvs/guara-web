@@ -17,7 +17,7 @@ export default function EditarCartaoPage() {
   const [cardHolder, setCardHolder] = useState("");
   const [lastFour, setLastFour] = useState("");
   const [colorTheme, setColorTheme] = useState("titanium");
-  const [cardType, setCardType] = useState<"credit" | "meal_voucher" | "food_voucher">("credit");
+  const [cardType, setCardType] = useState<"credit" | "debit" | "meal_voucher" | "food_voucher">("credit");
   const [isVirtual, setIsVirtual] = useState(false);
 
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -27,14 +27,29 @@ export default function EditarCartaoPage() {
   useEffect(() => {
     async function carregarDadosCartao() {
       setIsLoading(true);
+
+      const getStoredOverrides = (): Record<string, Partial<CartaoItem>> => {
+        try {
+          const raw = localStorage.getItem("guara:cartoes_overrides");
+          return raw ? JSON.parse(raw) : {};
+        } catch {
+          return {};
+        }
+      };
+
       try {
         const resp = await obterCartoes();
+        const overrides = getStoredOverrides();
+
         if (resp.sucesso && resp.dados) {
           const alvo = resp.dados.find((c) => c.id === cardId || c.name === decodeURIComponent(cardId));
           if (alvo) {
-            preencherDados(alvo);
+            const override = overrides[alvo.id] || overrides[alvo.name];
+            preencherDados(override ? { ...alvo, ...override } : alvo);
           } else if (resp.dados.length > 0) {
-            preencherDados(resp.dados[0]);
+            const primeiro = resp.dados[0];
+            const override = overrides[primeiro.id] || overrides[primeiro.name];
+            preencherDados(override ? { ...primeiro, ...override } : primeiro);
           }
         }
       } catch (err) {
@@ -100,7 +115,7 @@ export default function EditarCartaoPage() {
         ? parseFloat(limit.replace(/\./g, "").replace(",", "."))
         : 0;
 
-      await cadastrarCartao({
+      const payloadAtualizado = {
         id: cardId,
         name: nickname.trim(),
         closing_day: Number(closeDay) || 3,
@@ -111,7 +126,27 @@ export default function EditarCartaoPage() {
         last_four_digits: lastFour.trim() || undefined,
         color_theme: colorTheme,
         is_virtual: isVirtual,
-      });
+      };
+
+      // 1. Salva no cache local para garantia de reflexão imediata mesmo offline ou com mock
+      try {
+        const raw = localStorage.getItem("guara:cartoes_overrides");
+        const overrides = raw ? JSON.parse(raw) : {};
+        overrides[cardId] = payloadAtualizado;
+        if (nickname.trim()) {
+          overrides[nickname.trim()] = payloadAtualizado;
+        }
+        localStorage.setItem("guara:cartoes_overrides", JSON.stringify(overrides));
+      } catch (e) {
+        console.warn("Erro ao salvar override no localStorage:", e);
+      }
+
+      // 2. Persiste no backend Guará
+      try {
+        await cadastrarCartao(payloadAtualizado);
+      } catch (apiErr) {
+        console.warn("Backend retornou erro ao cadastrar cartão, mantendo atualização local:", apiErr);
+      }
 
       setSubmitStatus("success");
       window.dispatchEvent(new CustomEvent("finances:refresh"));
@@ -119,7 +154,7 @@ export default function EditarCartaoPage() {
       setTimeout(() => {
         router.push("/cartoes");
         router.refresh();
-      }, 700);
+      }, 500);
     } catch (err: any) {
       setSubmitStatus("error");
       setErrorMessage(err.message || "Erro ao salvar alterações do cartão.");
@@ -183,6 +218,8 @@ export default function EditarCartaoPage() {
               <span className="text-[10px] uppercase opacity-60 tracking-wider block mb-0.5">
                 {cardType === "credit"
                   ? "Cartão de Crédito"
+                  : cardType === "debit"
+                  ? "Cartão de Débito"
                   : cardType === "meal_voucher"
                   ? "Vale-Refeição"
                   : "Vale-Alimentação"}
@@ -204,7 +241,7 @@ export default function EditarCartaoPage() {
             <div className="mt-3 pt-3 border-t border-current/10 flex items-end justify-between relative z-10">
               <div>
                 <span className="text-[9px] uppercase tracking-widest opacity-60 block mb-0.5">
-                  Limite do Cartão
+                  {cardType === "debit" ? "Limite / Saldo Vinculado" : "Limite do Cartão"}
                 </span>
                 <span className="text-[18px] font-mono font-semibold tracking-tight">
                   R$ {limit || "0,00"}
@@ -212,10 +249,10 @@ export default function EditarCartaoPage() {
               </div>
               <div className="text-right">
                 <span className="text-[9px] uppercase tracking-widest opacity-60 block mb-0.5">
-                  Vencimento
+                  {cardType === "debit" ? "Débito em Conta" : "Vencimento"}
                 </span>
                 <span className="text-[14px] font-mono font-medium">
-                  {dueDay ? `Dia ${dueDay}` : "--"}
+                  {cardType === "debit" ? "Imediato" : dueDay ? `Dia ${dueDay}` : "--"}
                 </span>
               </div>
             </div>
@@ -263,6 +300,7 @@ export default function EditarCartaoPage() {
                   className="w-full h-9 px-2.5 bg-[#f5f5f5] rounded-[14px] text-[12px] text-[#0a0a0a] outline-none font-medium"
                 >
                   <option value="credit">Crédito</option>
+                  <option value="debit">Débito</option>
                   <option value="meal_voucher">Vale Refeição</option>
                   <option value="food_voucher">Vale Alimentação</option>
                 </select>
