@@ -1,5 +1,9 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { Geist } from "next/font/google";
+import { cn } from "@/lib/utils";
+
+const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: "Guará IA - Finanças Pessoais",
@@ -14,13 +18,16 @@ export const viewport: Viewport = {
   viewportFit: "cover",
 };
 
+import { Header } from "@/components/layout/header";
+import { BottomNav } from "@/components/layout/bottom-nav";
+
 export default function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" className="light">
+    <html lang="pt-BR" className={cn("light", "font-sans", geist.variable)}>
       <head>
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -34,7 +41,9 @@ export default function RootLayout({
         />
       </head>
       <body className="bg-[#f5f5f5] text-[#0a0a0a] min-h-screen flex flex-col antialiased selection:bg-[#e2e2e2]">
+        <Header />
         {children}
+        <BottomNav />
       </body>
     </html>
   );
