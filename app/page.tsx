@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { obterDashboard, DashboardResponse, DashboardRecentItem, interpretarTransacao, TransactionDraft } from "@/lib/api";
+import { obterDashboard, DashboardResponse, DashboardRecentItem, interpretarTransacao, TransactionDraft, adicionarAporteInvestimento } from "@/lib/api";
 import { ReviewModal } from "@/components/transaction/review-modal";
 
 type RecentItemGroup = DashboardRecentItem & {
@@ -61,8 +61,18 @@ export default function Home() {
   const [reviewDraft, setReviewDraft] = useState<TransactionDraft | null>(null);
   const [feedbackToast, setFeedbackToast] = useState<string | null>(null);
 
-  // Timeframe filter for Evolution chart
   const [activeRange, setActiveRange] = useState<"7D" | "30D" | "6M">("30D");
+
+  // Aporte Modal State
+  const [modalAporteAberto, setModalAporteAberto] = useState(false);
+  const [metaSelecionadaAporte, setMetaSelecionadaAporte] = useState<{
+    id: string;
+    nome: string;
+    saldo: number;
+    alvo?: number;
+  } | null>(null);
+  const [valorAporteInput, setValorAporteInput] = useState("100");
+  const [salvandoAporte, setSalvandoAporte] = useState(false);
 
   useEffect(() => {
     try {
@@ -131,6 +141,37 @@ export default function Home() {
       setTimeout(() => setFeedbackToast(null), 4000);
     } finally {
       setIsProcessingPrompt(false);
+    }
+  };
+
+  const handleConfirmarAporte = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!metaSelecionadaAporte) return;
+    const num = parseFloat(valorAporteInput.replace(/\./g, "").replace(",", "."));
+    if (isNaN(num) || num <= 0) {
+      setFeedbackToast("Informe um valor válido maior que zero.");
+      setTimeout(() => setFeedbackToast(null), 3000);
+      return;
+    }
+
+    setSalvandoAporte(true);
+    try {
+      await adicionarAporteInvestimento({
+        name: metaSelecionadaAporte.nome,
+        valorAporte: num,
+        saldoAtual: metaSelecionadaAporte.saldo,
+      });
+
+      setFeedbackToast(`Aporte de R$ ${num.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} adicionado com sucesso!`);
+      setTimeout(() => setFeedbackToast(null), 4000);
+      setModalAporteAberto(false);
+      window.dispatchEvent(new CustomEvent("finances:refresh"));
+      carregarDashboard();
+    } catch (err: any) {
+      setFeedbackToast(err.message || "Erro ao adicionar aporte.");
+      setTimeout(() => setFeedbackToast(null), 4000);
+    } finally {
+      setSalvandoAporte(false);
     }
   };
 
@@ -912,7 +953,11 @@ export default function Home() {
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleTriggerQuickEntry(`Aporte 500 na ${item.nome}`)}
+                      onClick={() => {
+                        setMetaSelecionadaAporte(item);
+                        setValorAporteInput("100");
+                        setModalAporteAberto(true);
+                      }}
                       className="text-[11px] text-[#0a0a0a] font-medium hover:underline cursor-pointer"
                     >
                       Adicionar aporte
@@ -1034,6 +1079,99 @@ export default function Home() {
           </div>
         </section>
       </div>
+
+      {/* Modal Interativo de Aporte Direto */}
+      {modalAporteAberto && metaSelecionadaAporte && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white rounded-[28px] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-black/5 flex flex-col gap-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-2 border-b border-black/5">
+              <div className="flex items-center gap-2">
+                <div className="w-8 h-8 rounded-full bg-emerald-50 text-emerald-600 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[18px]">savings</span>
+                </div>
+                <div>
+                  <h3 className="text-[15px] font-semibold text-[#0a0a0a]">Adicionar Aporte</h3>
+                  <p className="text-[12px] text-[#737373] truncate max-w-[200px]">{metaSelecionadaAporte.nome}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalAporteAberto(false)}
+                className="w-7 h-7 rounded-full flex items-center justify-center text-[#737373] hover:text-[#0a0a0a] hover:bg-black/5 transition-colors"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmarAporte} className="flex flex-col gap-4">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] uppercase tracking-wider text-[#737373] font-medium">
+                  Valor do Aporte (R$)
+                </label>
+                <div className="flex items-baseline bg-[#f5f5f5] rounded-[18px] px-3.5 py-2.5 border border-black/5 focus-within:ring-1 focus-within:ring-black">
+                  <span className="text-[18px] font-semibold text-[#0a0a0a] mr-2">R$</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={valorAporteInput}
+                    onChange={(e) => setValorAporteInput(e.target.value)}
+                    placeholder="0,00"
+                    className="w-full bg-transparent border-none outline-none text-[22px] font-semibold text-[#0a0a0a]"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Sugestões rápidas de aporte */}
+              <div className="flex gap-2">
+                {["50", "100", "200", "500"].map((sug) => (
+                  <button
+                    key={sug}
+                    type="button"
+                    onClick={() => setValorAporteInput(sug)}
+                    className={`flex-1 py-1.5 rounded-[12px] text-[12px] font-medium border border-black/5 transition-colors cursor-pointer ${
+                      valorAporteInput === sug
+                        ? "bg-[#0a0a0a] text-white"
+                        : "bg-[#fafafa] text-[#737373] hover:text-[#0a0a0a] hover:bg-white"
+                    }`}
+                  >
+                    +R${sug}
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-3 rounded-[16px] bg-[#fafafa] border border-black/5 text-[12px] flex justify-between">
+                <span className="text-[#737373]">Saldo atual:</span>
+                <span className="font-semibold text-[#0a0a0a]">
+                  R$ {metaSelecionadaAporte.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalAporteAberto(false)}
+                  className="flex-1 h-11 rounded-[16px] bg-[#f5f5f5] text-[#0a0a0a] text-[13px] font-medium hover:bg-neutral-200 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoAporte}
+                  className="flex-1 h-11 rounded-[16px] bg-[#0a0a0a] text-white text-[13px] font-medium hover:bg-neutral-800 transition-colors disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5"
+                >
+                  {salvandoAporte && (
+                    <span className="material-symbols-outlined text-[16px] animate-spin">
+                      progress_activity
+                    </span>
+                  )}
+                  <span>{salvandoAporte ? "Salvando..." : "Confirmar"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Review Modal for Quick Entries */}
       {reviewDraft && (

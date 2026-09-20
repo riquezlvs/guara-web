@@ -1,16 +1,15 @@
 "use client";
 
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
-import { obterExtrato, ItemExtrato } from "@/lib/api";
+import { obterExtrato, ItemExtrato, excluirTransacao } from "@/lib/api";
 
 type TransactionDetails = ItemExtrato & {
-  note: string;
-  tags: string[];
-  bankId: string;
+  note?: string;
+  tags?: string[];
+  bankId?: string;
 };
-
 
 function formatCurrency(value: number) {
   return value.toLocaleString("pt-BR", { minimumFractionDigits: 2 });
@@ -32,10 +31,13 @@ function paymentLabel(method: string) {
 }
 
 export default function TransactionDetailsPage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const [transaction, setTransaction] = useState<TransactionDetails | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [toast, setToast] = useState("");
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -43,21 +45,26 @@ export default function TransactionDetailsPage() {
     async function loadTransaction() {
       setIsLoading(true);
       try {
-        let response = await obterExtrato();
-        let found = response.dados?.itens.find(
-          (item) => String(item.display_id) === params.id,
-        );
-
-        if (!found && params.id) {
+        let found: ItemExtrato | undefined;
+        // 1. Tenta buscar direto por ID específico
+        if (params.id) {
           const singleResp = await obterExtrato(undefined, params.id);
           found = singleResp.dados?.itens?.find((item) => String(item.display_id) === params.id) || singleResp.dados?.itens?.[0];
+        }
+
+        // 2. Se não encontrar, tenta pelo extrato geral do mês
+        if (!found) {
+          const response = await obterExtrato();
+          found = response.dados?.itens.find(
+            (item) => String(item.display_id) === params.id,
+          );
         }
 
         if (found && mounted) {
           setTransaction({
             ...found,
-            note: "Lançamento sincronizado com o seu banco.",
-            tags: ["#Auditoria"],
+            note: found.observation || undefined,
+            tags: found.categories?.name ? [`#${found.categories.name}`] : [],
             bankId: `DOC-${found.display_id}`,
           });
         }
@@ -142,9 +149,19 @@ export default function TransactionDetailsPage() {
     window.setTimeout(() => setToast(""), 2800);
   };
 
-  const confirmDelete = () => {
-    if (window.confirm("Deseja realmente solicitar a exclusão ou contestação deste lançamento?")) {
-      showToast("Solicitação enviada para auditoria");
+  const handleExcluirLancamento = async () => {
+    setIsDeleting(true);
+    try {
+      await excluirTransacao(transaction.display_id);
+      showToast("Lançamento excluído com sucesso!");
+      window.dispatchEvent(new CustomEvent("finances:refresh"));
+      setTimeout(() => {
+        router.push("/extrato");
+      }, 700);
+    } catch (err: any) {
+      showToast(err.message || "Erro ao excluir lançamento.");
+      setIsDeleting(false);
+      setShowDeleteModal(false);
     }
   };
 
@@ -292,10 +309,51 @@ export default function TransactionDetailsPage() {
         </section>
 
         <section className="rounded-[24px] bg-white shadow-sm p-5 flex flex-col gap-4">
-          <div className="flex items-center justify-between"><span className="text-[10px] text-[#737373] uppercase tracking-[0.14em]">Anotações &amp; comprovante</span><span className="material-symbols-outlined text-[16px] text-[#737373]">note_alt</span></div>
-          <div className="p-3 rounded-2xl bg-[#fafafa]"><span className="text-[10px] text-[#737373]">Nota anexada</span><p className="text-[13px] mt-1">“{transaction.note}”</p></div>
-          <div><span className="text-[10px] text-[#737373]">Tags de auditoria</span><div className="flex flex-wrap gap-1.5 mt-2">{transaction.tags.map((tag) => <span key={tag} className="px-3 py-1 rounded-full bg-[#fafafa] text-[11px]">{tag}</span>)}</div></div>
-          <button type="button" onClick={() => showToast("Visualizador de documento fiscal carregado")} className="w-full h-12 px-3 bg-[#f5f5f5] rounded-[18px] flex items-center justify-between text-[12px] hover:bg-[#fafafa] transition-colors"><span className="flex items-center gap-2"><span className="material-symbols-outlined text-[18px] text-[#737373]">receipt_long</span>Comprovante fiscal (NFC-e {transaction.display_id})</span><span className="flex items-center gap-1 text-[10px] text-[#737373]">PDF anexo <span className="material-symbols-outlined text-[16px]">chevron_right</span></span></button>
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] text-[#737373] uppercase tracking-[0.14em]">
+              Anotações &amp; comprovante
+            </span>
+            <span className="material-symbols-outlined text-[16px] text-[#737373]">note_alt</span>
+          </div>
+          
+          <div className="p-3.5 rounded-2xl bg-[#fafafa] flex flex-col gap-1">
+            <span className="text-[11px] font-medium text-[#737373]">Anotações do Lançamento</span>
+            <p className="text-[13px] text-[#0a0a0a] leading-relaxed">
+              {transaction.note ? `“${transaction.note}”` : "Nenhuma anotação registrada para este lançamento."}
+            </p>
+          </div>
+
+          {transaction.tags && transaction.tags.length > 0 && (
+            <div>
+              <span className="text-[10px] text-[#737373] uppercase tracking-wider">Tags</span>
+              <div className="flex flex-wrap gap-1.5 mt-1.5">
+                {transaction.tags.map((tag) => (
+                  <span key={tag} className="px-3 py-1 rounded-full bg-[#fafafa] text-[11px] text-[#737373] border border-black/5">
+                    {tag}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Comprovante Real ou Estado Vazio */}
+          <div className="p-3.5 rounded-2xl bg-[#fafafa] border border-black/5 flex items-center justify-between">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="w-8 h-8 rounded-full bg-white flex items-center justify-center text-[#737373] shadow-xs shrink-0">
+                <span className="material-symbols-outlined text-[18px]">receipt_long</span>
+              </div>
+              <div className="flex flex-col min-w-0">
+                <span className="text-[13px] font-medium text-[#0a0a0a] truncate">Comprovante Fiscal</span>
+                <span className="text-[11px] text-[#737373]">Nenhum comprovante anexado</span>
+              </div>
+            </div>
+            <Link
+              href={`/extrato/${params.id || transaction.display_id}/editar`}
+              className="text-[11px] font-medium text-[#0a0a0a] px-2.5 py-1 rounded-full bg-white shadow-xs hover:bg-neutral-100 transition-colors"
+            >
+              Anexar
+            </Link>
+          </div>
         </section>
 
         <section className="flex flex-col gap-2">
@@ -315,14 +373,67 @@ export default function TransactionDetailsPage() {
           </Link>
           <button
             type="button"
-            onClick={confirmDelete}
-            className="h-10 self-center px-3 rounded-full text-[#e7000b] text-[12px] flex items-center gap-1.5 hover:bg-red-50 active:scale-95 transition-all"
+            onClick={() => setShowDeleteModal(true)}
+            className="h-10 self-center px-3 rounded-full text-[#e7000b] text-[12px] flex items-center gap-1.5 hover:bg-red-50 active:scale-95 transition-all cursor-pointer"
           >
             <span className="material-symbols-outlined text-[16px]">delete_forever</span>
-            Excluir ou contestar lançamento
+            Excluir lançamento
           </button>
         </section>
       </div>
+
+      {/* Modal de Confirmação de Exclusão */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white rounded-[28px] p-6 shadow-2xl border border-black/5 flex flex-col gap-4 animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-full bg-red-50 text-[#e7000b] flex items-center justify-center">
+              <span className="material-symbols-outlined text-[26px]">delete_forever</span>
+            </div>
+
+            <div className="flex flex-col gap-1.5">
+              <h2 className="text-[18px] font-semibold text-[#0a0a0a] tracking-tight">
+                Excluir lançamento?
+              </h2>
+              <p className="text-[13px] text-[#737373] leading-relaxed">
+                Tem certeza que deseja excluir permanentemente o lançamento de{" "}
+                <strong className="text-[#0a0a0a]">&ldquo;{descricaoExibida}&rdquo;</strong> no valor de{" "}
+                <strong className="text-[#0a0a0a]">R$ {formatCurrency(valorParcela)}</strong>?
+              </p>
+              {isParcelado && (
+                <div className="p-3 rounded-[16px] bg-amber-50 text-amber-800 text-[12px] flex items-start gap-2">
+                  <span className="material-symbols-outlined text-[16px] shrink-0 mt-0.5">warning</span>
+                  <span>Esta compra faz parte de um plano parcelado ({transaction.installment_total}x). Todo o grupo será excluído.</span>
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-col gap-2 pt-2">
+              <button
+                className="w-full h-11 rounded-[18px] bg-[#e7000b] text-white text-[13px] font-medium hover:opacity-95 active:scale-[0.99] transition-all flex items-center justify-center gap-2 shadow-sm cursor-pointer disabled:opacity-50"
+                onClick={handleExcluirLancamento}
+                disabled={isDeleting}
+                type="button"
+              >
+                {isDeleting ? (
+                  <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                ) : (
+                  <span className="material-symbols-outlined text-[18px]">delete</span>
+                )}
+                <span>{isDeleting ? "Excluindo..." : "Sim, excluir lançamento"}</span>
+              </button>
+              <button
+                className="w-full h-11 rounded-[18px] bg-[#f5f5f5] hover:bg-neutral-200 text-[#0a0a0a] text-[13px] font-medium transition-all cursor-pointer"
+                onClick={() => setShowDeleteModal(false)}
+                type="button"
+                disabled={isDeleting}
+              >
+                Cancelar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {toast && <div className="fixed bottom-28 left-1/2 -translate-x-1/2 z-[60] bg-[#0a0a0a] text-white px-5 py-2.5 rounded-full text-[12px] shadow-lg whitespace-nowrap">{toast}</div>}
     </main>
   );

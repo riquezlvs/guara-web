@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { obterExtrato, ItemExtrato } from "@/lib/api";
+import { obterExtrato, ItemExtrato, obterPessoas, cadastrarPessoa, dividirTransacao } from "@/lib/api";
 
 interface FriendMember {
   id: string;
@@ -18,17 +18,13 @@ export default function DividirComAmigosPage() {
   const params = useParams<{ id: string }>();
 
   const [isLoading, setIsLoading] = useState(true);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [transaction, setTransaction] = useState<ItemExtrato | null>(null);
   const [mode, setMode] = useState<"equal" | "exact" | "percent" | "receipt">("equal");
   const [whatsappShare, setWhatsappShare] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [members, setMembers] = useState<FriendMember[]>([
     { id: "user", name: "Você (Titular)", detail: "Responsável pelo pagamento", active: true, isUser: true, initial: "VC" },
-    { id: "lucas", name: "Lucas Albuquerque", detail: "11 98123-4567 • Chave CPF", active: true, isUser: false, initial: "LA" },
-    { id: "camila", name: "Camila Rocha", detail: "camila.rocha@email.com", active: true, isUser: false, initial: "CR" },
-    { id: "rodrigo", name: "Rodrigo Lima", detail: "rodrigo.l@pix.com", active: false, isUser: false, initial: "RL" },
-    { id: "beatriz", name: "Beatriz Mendes", detail: "11 99742-1100", active: false, isUser: false, initial: "BM" },
-    { id: "matheus", name: "Matheus Santos", detail: "matheus.santos@bank.com", active: false, isUser: false, initial: "MS" },
   ]);
 
   const [toastMessage, setToastMessage] = useState("");
@@ -36,18 +32,37 @@ export default function DividirComAmigosPage() {
   useEffect(() => {
     let mounted = true;
 
-    async function loadTransaction() {
+    async function loadData() {
       setIsLoading(true);
       try {
-        const response = await obterExtrato();
-        const found = response.dados?.itens.find(
+        const [extratoRes, pessoasRes] = await Promise.all([
+          obterExtrato(undefined, params.id).catch(() => obterExtrato()),
+          obterPessoas().catch(() => ({ sucesso: false, dados: [] })),
+        ]);
+
+        const found = extratoRes.dados?.itens?.find(
           (item) => String(item.display_id) === params.id
         );
         if (found && mounted) {
           setTransaction(found);
         }
+
+        if (pessoasRes.sucesso && Array.isArray(pessoasRes.dados) && mounted) {
+          const loadedMembers: FriendMember[] = [
+            { id: "user", name: "Você (Titular)", detail: "Responsável pelo pagamento", active: true, isUser: true, initial: "VC" },
+            ...pessoasRes.dados.map((p) => ({
+              id: String(p.id),
+              name: p.name,
+              detail: p.saldoDevedor ? `Saldo atual: R$ ${Math.abs(p.saldoDevedor).toFixed(2)}` : "Contato cadastrado",
+              active: false,
+              isUser: false,
+              initial: p.initials || p.name.slice(0, 2).toUpperCase(),
+            })),
+          ];
+          setMembers(loadedMembers);
+        }
       } catch (err) {
-        console.warn("Erro ao carregar lançamento para divisão:", err);
+        console.warn("Erro ao carregar dados para divisão:", err);
       } finally {
         if (mounted) {
           setIsLoading(false);
@@ -55,7 +70,7 @@ export default function DividirComAmigosPage() {
       }
     }
 
-    void loadTransaction();
+    void loadData();
     return () => {
       mounted = false;
     };
@@ -97,12 +112,62 @@ export default function DividirComAmigosPage() {
   const activeNonUsers = filteredMembers.filter((m) => m.active);
   const inactiveNonUsers = filteredMembers.filter((m) => !m.active);
 
-  const handleConfirm = () => {
-    showToast(count > 1 ? "Divisão configurada com sucesso!" : "Divisão individual salva!");
-    setTimeout(() => {
-      router.back();
-    }, 600);
+  const handleAddNewFriend = async () => {
+    const nome = prompt("Nome do novo amigo ou contato:");
+    if (!nome || !nome.trim()) return;
+
+    try {
+      const resp = await cadastrarPessoa(nome.trim());
+      const novoId = resp.dados?.id ? String(resp.dados.id) : `friend-${Date.now()}`;
+      const newMember: FriendMember = {
+        id: novoId,
+        name: resp.dados?.name || nome.trim(),
+        detail: "Adicionado agora",
+        active: true,
+        isUser: false,
+        initial: (resp.dados?.name || nome.trim()).slice(0, 2).toUpperCase(),
+      };
+      setMembers((prev) => [...prev, newMember]);
+      showToast(`${newMember.name} adicionado com sucesso!`);
+    } catch (err: any) {
+      showToast(err.message || "Erro ao adicionar contato");
+    }
   };
+
+  const handleConfirm = async () => {
+    if (isSubmitting) return;
+
+    const friendsSelected = members.filter((m) => !m.isUser && m.active);
+    if (friendsSelected.length === 0) {
+      showToast("Selecione pelo menos um amigo para dividir!");
+      return;
+    }
+
+    try {
+      setIsSubmitting(true);
+      await dividirTransacao({
+        display_id: transaction ? Number(transaction.display_id) : undefined,
+        description: transaction?.description,
+        total_amount: baseAmount,
+        category_id: transaction?.categories?.id,
+        occurred_at: transaction?.occurred_at,
+        pessoas: friendsSelected.map((f) => ({
+          name: f.name,
+          valor: share,
+        })),
+      });
+
+      showToast("Divisão salva no banco com sucesso!");
+      setTimeout(() => {
+        router.back();
+      }, 700);
+    } catch (err: any) {
+      showToast(err.message || "Erro ao salvar divisão.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
 
   if (isLoading) {
     return (
@@ -383,24 +448,7 @@ export default function DividirComAmigosPage() {
                 <button
                   className="h-11 px-3.5 rounded-[18px] bg-surface-alt hover:bg-surface-container transition-all flex items-center gap-1 text-[13px] text-ink font-medium shrink-0"
                   type="button"
-                  onClick={() => {
-                    const nome = prompt("Nome do novo amigo:");
-                    if (nome) {
-                      const newId = `friend-${Date.now()}`;
-                      setMembers((prev) => [
-                        ...prev,
-                        {
-                          id: newId,
-                          name: nome.trim(),
-                          detail: "Adicionado recentemente",
-                          active: true,
-                          isUser: false,
-                          initial: nome.slice(0, 2).toUpperCase(),
-                        },
-                      ]);
-                      showToast(`${nome} adicionado!`);
-                    }
-                  }}
+                  onClick={handleAddNewFriend}
                 >
                   <span className="material-symbols-outlined text-[18px]">person_add</span>
                   <span>Novo</span>
@@ -409,42 +457,53 @@ export default function DividirComAmigosPage() {
 
               {/* Lista de Amigos Ativos */}
               <div className="flex flex-col gap-2.5" id="split-participants-list">
-                {activeNonUsers.map((m) => (
-                  <div
-                    key={m.id}
-                    className="flex items-center justify-between p-3.5 rounded-[18px] bg-paper shadow-sm hover:shadow transition-all"
-                  >
-                    <div className="flex items-center gap-3 min-w-0">
-                      <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-[14px] text-ink font-medium shrink-0">
-                        {m.initial}
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-[14px] text-ink font-medium truncate">{m.name}</p>
-                        <p className="text-[12px] text-mid-gray truncate">{m.detail}</p>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 shrink-0">
-                      <span className="text-[14px] text-ink font-semibold">R$ {formatBRL(share)}</span>
-                      <button
-                        type="button"
-                        onClick={() => toggleMember(m.id)}
-                        className="w-8 h-8 rounded-full bg-surface-alt hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors"
-                        aria-label="Remover"
-                      >
-                        <span className="material-symbols-outlined text-[18px]">close</span>
-                      </button>
-                    </div>
+                {activeNonUsers.length === 0 ? (
+                  <div className="p-4 rounded-[18px] bg-surface-alt/50 border border-dashed border-mid-gray/20 text-center">
+                    <p className="text-[13px] text-mid-gray">
+                      Nenhum amigo adicionado à divisão ainda.
+                    </p>
+                    <p className="text-[12px] text-mid-gray/80 mt-0.5">
+                      Selecione um contato abaixo ou clique em <strong>+ Novo</strong> para cadastrar.
+                    </p>
                   </div>
-                ))}
+                ) : (
+                  activeNonUsers.map((m) => (
+                    <div
+                      key={m.id}
+                      className="flex items-center justify-between p-3.5 rounded-[18px] bg-paper shadow-sm hover:shadow transition-all"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="w-10 h-10 rounded-full bg-surface-container flex items-center justify-center text-[14px] text-ink font-medium shrink-0">
+                          {m.initial}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-[14px] text-ink font-medium truncate">{m.name}</p>
+                          <p className="text-[12px] text-mid-gray truncate">{m.detail}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 shrink-0">
+                        <span className="text-[14px] text-ink font-semibold">R$ {formatBRL(share)}</span>
+                        <button
+                          type="button"
+                          onClick={() => toggleMember(m.id)}
+                          className="w-8 h-8 rounded-full bg-surface-alt hover:bg-surface-container flex items-center justify-center text-on-surface-variant transition-colors"
+                          aria-label="Remover"
+                        >
+                          <span className="material-symbols-outlined text-[18px]">close</span>
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
               </div>
 
               {/* Sugestões Frequentes / Recentes */}
               {inactiveNonUsers.length > 0 && (
                 <div className="pt-2 flex flex-col gap-2">
                   <div className="flex items-center gap-1.5">
-                    <span className="material-symbols-outlined text-[16px] text-mid-gray">history</span>
+                    <span className="material-symbols-outlined text-[16px] text-mid-gray">group</span>
                     <span className="text-[12px] uppercase text-mid-gray tracking-wider font-medium">
-                      Sugestões Frequentes
+                      Contatos Disponíveis ({inactiveNonUsers.length})
                     </span>
                   </div>
                   <div className="flex flex-wrap gap-2" id="split-frequent-chips">
@@ -581,13 +640,21 @@ export default function DividirComAmigosPage() {
             {/* 7. AÇÕES DE RODAPÉ */}
             <div className="pt-2 pb-8 flex flex-col gap-2.5">
               <button
-                className="w-full h-12 px-6 rounded-[18px] bg-ink text-paper text-[14px] font-medium flex items-center justify-center gap-2 shadow-sm hover:opacity-95 active:scale-[0.99] transition-all"
+                className="w-full h-12 px-6 rounded-[18px] bg-ink text-paper text-[14px] font-medium flex items-center justify-center gap-2 shadow-sm hover:opacity-95 active:scale-[0.99] transition-all disabled:opacity-50"
                 onClick={handleConfirm}
+                disabled={isSubmitting}
                 type="button"
               >
-                {count > 1
-                  ? `Confirmar Divisão (R$ ${formatBRL(othersShare)} a receber)`
-                  : "Confirmar Divisão Individual"}
+                {isSubmitting ? (
+                  <>
+                    <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                    <span>Salvando divisão...</span>
+                  </>
+                ) : count > 1 ? (
+                  `Confirmar Divisão (R$ ${formatBRL(othersShare)} a receber)`
+                ) : (
+                  "Confirmar Divisão Individual"
+                )}
               </button>
               <button
                 className="w-full h-11 px-6 rounded-[18px] bg-surface-alt hover:bg-surface-container text-ink text-[14px] font-medium flex items-center justify-center transition-all"

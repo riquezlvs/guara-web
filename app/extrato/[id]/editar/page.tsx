@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { obterExtrato, ItemExtrato } from "@/lib/api";
+import { obterExtrato, ItemExtrato, atualizarTransacao, excluirTransacao } from "@/lib/api";
 
 export default function EditarLancamentoPage() {
   const router = useRouter();
@@ -63,8 +63,8 @@ export default function EditarLancamentoPage() {
             setTxTime(new Date().toLocaleTimeString("pt-BR"));
           }
 
-          setNotes(found.observation || "Lançamento sincronizado com o seu banco.");
-          setTags(["#Auditoria", `#${found.categories?.name || "Geral"}`]);
+          setNotes(found.observation || "");
+          setTags(found.categories?.name ? [`#${found.categories.name}`] : []);
         }
       } catch (err) {
         console.warn("Erro ao buscar detalhes da transação para edição:", err);
@@ -86,23 +86,51 @@ export default function EditarLancamentoPage() {
     setTimeout(() => setToastMessage(""), 2800);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    if (!transaction) return;
+    const cleanAmount = parseFloat(amount.replace(/\./g, "").replace(",", "."));
+    if (isNaN(cleanAmount) || cleanAmount <= 0) {
+      showToast("Informe um valor válido maior que zero.");
+      return;
+    }
+    if (!merchant.trim()) {
+      showToast("Informe o nome do estabelecimento/descrição.");
+      return;
+    }
+
     setIsSaving(true);
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      await atualizarTransacao(transaction.display_id, {
+        description: merchant.trim(),
+        total_amount: cleanAmount,
+        entry_type: entryType,
+        observation: notes.trim() || undefined,
+      });
+
       showToast("Alterações salvas com sucesso!");
+      window.dispatchEvent(new CustomEvent("finances:refresh"));
       setTimeout(() => {
         router.back();
-      }, 500);
-    }, 400);
+      }, 700);
+    } catch (err: any) {
+      showToast(err.message || "Erro ao salvar alterações.");
+      setIsSaving(false);
+    }
   };
 
-  const handleDeleteConfirmed = () => {
+  const handleDeleteConfirmed = async () => {
+    if (!transaction) return;
     setShowDeleteModal(false);
-    showToast("Lançamento excluído com sucesso!");
-    setTimeout(() => {
-      router.push("/extrato");
-    }, 600);
+    try {
+      await excluirTransacao(transaction.display_id);
+      showToast("Lançamento excluído com sucesso!");
+      window.dispatchEvent(new CustomEvent("finances:refresh"));
+      setTimeout(() => {
+        router.push("/extrato");
+      }, 700);
+    } catch (err: any) {
+      showToast(err.message || "Erro ao excluir lançamento.");
+    }
   };
 
   const removeTag = (tagToRemove: string) => {
@@ -610,31 +638,23 @@ export default function EditarLancamentoPage() {
                 </span>
                 <div className="p-3 bg-canvas rounded-[18px] flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-[10px] bg-paper flex items-center justify-center shrink-0 shadow-sm">
-                      <span className="material-symbols-outlined text-ink text-[18px]">description</span>
+                    <div className="w-8 h-8 rounded-[10px] bg-paper flex items-center justify-center shrink-0 shadow-sm text-mid-gray">
+                      <span className="material-symbols-outlined text-[18px]">receipt_long</span>
                     </div>
                     <div className="flex flex-col min-w-0">
                       <span className="text-[13px] font-medium text-ink truncate">
-                        NFC-e 3819 anexada (PDF)
+                        Comprovante Fiscal
                       </span>
-                      <span className="text-[12px] text-mid-gray">420 KB • Validado via SEFAZ</span>
+                      <span className="text-[12px] text-mid-gray">Nenhum arquivo anexado</span>
                     </div>
                   </div>
                   <div className="flex items-center gap-1 shrink-0">
                     <button
-                      className="h-7 px-2.5 rounded-[18px] bg-paper hover:bg-surface-container text-ink text-[13px] shadow-sm transition-colors font-medium"
+                      className="h-7 px-2.5 rounded-[18px] bg-paper hover:bg-surface-container text-ink text-[13px] shadow-sm transition-colors font-medium cursor-pointer"
                       type="button"
-                      onClick={() => showToast("Upload de novo comprovante")}
+                      onClick={() => showToast("Funcionalidade de upload em desenvolvimento")}
                     >
-                      Substituir
-                    </button>
-                    <button
-                      aria-label="Remover anexo fiscal"
-                      className="w-7 h-7 rounded-[18px] hover:bg-surface-container text-mid-gray hover:text-ink flex items-center justify-center transition-colors"
-                      type="button"
-                      onClick={() => showToast("Comprovante mantido")}
-                    >
-                      <span className="material-symbols-outlined text-[16px]">close</span>
+                      Anexar
                     </button>
                   </div>
                 </div>

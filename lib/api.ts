@@ -811,4 +811,100 @@ export async function obterResumoQuemMeDeve(): Promise<{ sucesso: boolean; dados
   return res.json();
 }
 
+/**
+ * Exclui uma transação e todo o seu grupo associado no Supabase
+ */
+export async function excluirTransacao(displayId: number): Promise<{ sucesso: boolean; mensagem: string }> {
+  const res = await fetch(`${API_BASE_URL}/api/transactions/excluir`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ display_id: displayId }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao excluir transação: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Atualiza os dados cadastrais/financeiros de uma transação no banco de dados
+ */
+export async function atualizarTransacao(
+  displayId: number,
+  dados: {
+    description?: string;
+    total_amount?: number;
+    category_id?: number;
+    payment_method?: string;
+    occurred_at?: string;
+    observation?: string;
+    entry_type?: 'expense' | 'income';
+  }
+): Promise<{ sucesso: boolean; mensagem: string; dados?: any }> {
+  const res = await fetch(`${API_BASE_URL}/api/transactions/editar`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ display_id: displayId, ...dados }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao atualizar transação: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Registra a divisão de uma despesa com pessoas reais no banco de dados
+ */
+export async function dividirTransacao(dados: {
+  display_id?: number;
+  description?: string;
+  total_amount?: number;
+  category_id?: number;
+  payment_method?: string;
+  occurred_at?: string;
+  pessoas: Array<{ name: string; valor?: number } | string>;
+}): Promise<{ sucesso: boolean; mensagem: string; dados?: any }> {
+  const res = await fetch(`${API_BASE_URL}/api/debts/split`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(dados),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao dividir despesa: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Adiciona um aporte financeiro direto em uma caixinha ou meta
+ */
+export async function adicionarAporteInvestimento(dados: {
+  accountId?: string;
+  name: string;
+  valorAporte: number;
+  saldoAtual?: number;
+}): Promise<{ sucesso: boolean; mensagem: string }> {
+  const novoSaldo = (dados.saldoAtual || 0) + dados.valorAporte;
+  return ajustarSaldoInvestimento({
+    accountId: dados.accountId,
+    name: dados.name,
+    novoSaldo,
+  });
+}
+
 
