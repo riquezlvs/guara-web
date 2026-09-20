@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
-import { obterDashboard, DashboardResponse, DashboardRecentItem, interpretarTransacao, TransactionDraft, adicionarAporteInvestimento } from "@/lib/api";
+import { obterDashboard, DashboardResponse, DashboardRecentItem, interpretarTransacao, TransactionDraft, adicionarAporteInvestimento, resgatarValorInvestimento } from "@/lib/api";
 import { ReviewModal } from "@/components/transaction/review-modal";
 
 type RecentItemGroup = DashboardRecentItem & {
@@ -63,8 +63,9 @@ export default function Home() {
 
   const [activeRange, setActiveRange] = useState<"7D" | "30D" | "6M">("30D");
 
-  // Aporte Modal State
+  // Aporte & Resgate Modal States
   const [modalAporteAberto, setModalAporteAberto] = useState(false);
+  const [modalResgateAberto, setModalResgateAberto] = useState(false);
   const [metaSelecionadaAporte, setMetaSelecionadaAporte] = useState<{
     id: string;
     nome: string;
@@ -73,6 +74,7 @@ export default function Home() {
   } | null>(null);
   const [valorAporteInput, setValorAporteInput] = useState("100");
   const [salvandoAporte, setSalvandoAporte] = useState(false);
+  const [salvandoResgate, setSalvandoResgate] = useState(false);
 
   useEffect(() => {
     try {
@@ -172,6 +174,42 @@ export default function Home() {
       setTimeout(() => setFeedbackToast(null), 4000);
     } finally {
       setSalvandoAporte(false);
+    }
+  };
+
+  const handleConfirmarResgate = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!metaSelecionadaAporte) return;
+    const num = parseFloat(valorAporteInput.replace(/\./g, "").replace(",", "."));
+    if (isNaN(num) || num <= 0) {
+      setFeedbackToast("Informe um valor válido maior que zero.");
+      setTimeout(() => setFeedbackToast(null), 3000);
+      return;
+    }
+    if (num > (metaSelecionadaAporte.saldo || 0)) {
+      setFeedbackToast("O valor do resgate não pode ser maior que o saldo atual.");
+      setTimeout(() => setFeedbackToast(null), 3000);
+      return;
+    }
+
+    setSalvandoResgate(true);
+    try {
+      await resgatarValorInvestimento({
+        name: metaSelecionadaAporte.nome,
+        valorResgate: num,
+        saldoAtual: metaSelecionadaAporte.saldo,
+      });
+
+      setFeedbackToast(`Resgate de R$ ${num.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} realizado com sucesso!`);
+      setTimeout(() => setFeedbackToast(null), 4000);
+      setModalResgateAberto(false);
+      window.dispatchEvent(new CustomEvent("finances:refresh"));
+      carregarDashboard();
+    } catch (err: any) {
+      setFeedbackToast(err.message || "Erro ao realizar resgate.");
+      setTimeout(() => setFeedbackToast(null), 4000);
+    } finally {
+      setSalvandoResgate(false);
     }
   };
 
@@ -951,17 +989,31 @@ export default function Home() {
                       <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
                       <span className="text-[12px] text-[#737373]">{item.nome}</span>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setMetaSelecionadaAporte(item);
-                        setValorAporteInput("100");
-                        setModalAporteAberto(true);
-                      }}
-                      className="text-[11px] text-[#0a0a0a] font-medium hover:underline cursor-pointer"
-                    >
-                      Adicionar aporte
-                    </button>
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMetaSelecionadaAporte(item);
+                          setValorAporteInput("100");
+                          setModalAporteAberto(true);
+                        }}
+                        className="text-[11px] text-[#0a0a0a] font-medium hover:underline cursor-pointer"
+                      >
+                        + Aporte
+                      </button>
+                      <span className="text-[10px] text-[#d4d4d4]">•</span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setMetaSelecionadaAporte(item);
+                          setValorAporteInput("50");
+                          setModalResgateAberto(true);
+                        }}
+                        className="text-[11px] text-rose-600 font-medium hover:underline cursor-pointer"
+                      >
+                        − Retirar
+                      </button>
+                    </div>
                   </div>
                 </div>
               ))}
@@ -1166,6 +1218,103 @@ export default function Home() {
                     </span>
                   )}
                   <span>{salvandoAporte ? "Salvando..." : "Confirmar"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Resgate / Retirada */}
+      {modalResgateAberto && metaSelecionadaAporte && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white rounded-[28px] p-6 shadow-2xl border border-black/5 flex flex-col gap-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center justify-between pb-1 border-b border-black/5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-[14px] bg-rose-50 text-rose-600 flex items-center justify-center">
+                  <span className="material-symbols-outlined text-[22px]">payments</span>
+                </div>
+                <div>
+                  <h3 className="text-[16px] font-semibold text-[#0a0a0a] tracking-tight">
+                    Retirar / Resgatar
+                  </h3>
+                  <span className="text-[12px] text-[#737373]">
+                    {metaSelecionadaAporte.nome}
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalResgateAberto(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[#737373] hover:text-[#0a0a0a] hover:bg-[#f5f5f5] cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmarResgate} className="flex flex-col gap-3.5">
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-[#737373] block mb-1 font-medium">
+                  Valor a retirar (R$)
+                </label>
+                <div className="flex items-center gap-2 px-3.5 h-12 rounded-[16px] bg-[#fafafa] border border-black/5 focus-within:border-black/20 focus-within:bg-white transition-all">
+                  <span className="text-[16px] font-medium text-[#737373]">R$</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={valorAporteInput}
+                    onChange={(e) => setValorAporteInput(e.target.value)}
+                    placeholder="0,00"
+                    className="w-full bg-transparent border-none outline-none text-[22px] font-semibold text-[#0a0a0a]"
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Sugestões rápidas de resgate */}
+              <div className="flex gap-2">
+                {["50", "100", "200", "500"].map((sug) => (
+                  <button
+                    key={sug}
+                    type="button"
+                    onClick={() => setValorAporteInput(sug)}
+                    className={`flex-1 py-1.5 rounded-[12px] text-[12px] font-medium border border-black/5 transition-colors cursor-pointer ${
+                      valorAporteInput === sug
+                        ? "bg-rose-600 text-white"
+                        : "bg-[#fafafa] text-[#737373] hover:text-[#0a0a0a] hover:bg-white"
+                    }`}
+                  >
+                    -R${sug}
+                  </button>
+                ))}
+              </div>
+
+              <div className="p-3 rounded-[16px] bg-[#fafafa] border border-black/5 text-[12px] flex justify-between">
+                <span className="text-[#737373]">Saldo disponível:</span>
+                <span className="font-semibold text-[#0a0a0a]">
+                  R$ {metaSelecionadaAporte.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              <div className="flex gap-2 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setModalResgateAberto(false)}
+                  className="flex-1 h-11 rounded-[16px] bg-[#f5f5f5] text-[#0a0a0a] text-[13px] font-medium hover:bg-neutral-200 transition-colors cursor-pointer"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoResgate}
+                  className="flex-1 h-11 rounded-[16px] bg-rose-600 text-white text-[13px] font-medium hover:bg-rose-700 transition-colors disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+                >
+                  {salvandoResgate && (
+                    <span className="material-symbols-outlined text-[16px] animate-spin">
+                      progress_activity
+                    </span>
+                  )}
+                  <span>{salvandoResgate ? "Processando..." : "Confirmar Saque"}</span>
                 </button>
               </div>
             </form>

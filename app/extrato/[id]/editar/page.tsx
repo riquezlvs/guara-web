@@ -2,7 +2,25 @@
 
 import { useState, useEffect } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { obterExtrato, ItemExtrato, atualizarTransacao, excluirTransacao } from "@/lib/api";
+import {
+  obterExtrato,
+  ItemExtrato,
+  atualizarTransacao,
+  excluirTransacao,
+  obterCategoriasDisponiveis,
+  obterContasDisponiveis,
+} from "@/lib/api";
+
+const PRESET_TAGS = [
+  "#Alimentação",
+  "#Trabalho",
+  "#Lazer",
+  "#Viagem",
+  "#Essencial",
+  "#Mercado",
+  "#Fixo",
+  "#Urgente",
+];
 
 export default function EditarLancamentoPage() {
   const router = useRouter();
@@ -22,6 +40,21 @@ export default function EditarLancamentoPage() {
   const [ignoreStats, setIgnoreStats] = useState(false);
   const [reimbursable, setReimbursable] = useState(false);
 
+  // Selected Category and Account
+  const [selectedCategoryId, setSelectedCategoryId] = useState<number | undefined>(undefined);
+  const [selectedCategoryName, setSelectedCategoryName] = useState<string>("Geral");
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState<string>("pix");
+  const [selectedAccountId, setSelectedAccountId] = useState<string | undefined>(undefined);
+  const [selectedAccountName, setSelectedAccountName] = useState<string>("Conta Bancária");
+
+  // Available options from DB
+  const [availableCategories, setAvailableCategories] = useState<Array<{ id: number; name: string }>>([]);
+  const [availableAccounts, setAvailableAccounts] = useState<Array<{ id: string; name: string; type: string; balance: number }>>([]);
+
+  // Modals for selection
+  const [modalCategoryOpen, setModalCategoryOpen] = useState(false);
+  const [modalAccountOpen, setModalAccountOpen] = useState(false);
+
   // Modal / Confirm delete state
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -30,18 +63,27 @@ export default function EditarLancamentoPage() {
   useEffect(() => {
     let mounted = true;
 
-    async function loadTransaction() {
+    async function loadData() {
       setIsLoading(true);
       try {
-        let response = await obterExtrato();
-        let found = response.dados?.itens.find(
-          (item) => String(item.display_id) === params.id
-        );
+        const [extratoRes, categoriesRes, accountsRes] = await Promise.all([
+          params.id
+            ? obterExtrato(undefined, params.id).catch(() => obterExtrato())
+            : obterExtrato(),
+          obterCategoriasDisponiveis().catch(() => ({ sucesso: false, dados: [] })),
+          obterContasDisponiveis().catch(() => ({ sucesso: false, dados: [] })),
+        ]);
 
-        if (!found && params.id) {
-          const singleResp = await obterExtrato(undefined, params.id);
-          found = singleResp.dados?.itens?.find((item) => String(item.display_id) === params.id) || singleResp.dados?.itens?.[0];
+        if (categoriesRes.sucesso && Array.isArray(categoriesRes.dados) && mounted) {
+          setAvailableCategories(categoriesRes.dados);
         }
+        if (accountsRes.sucesso && Array.isArray(accountsRes.dados) && mounted) {
+          setAvailableAccounts(accountsRes.dados);
+        }
+
+        let found = extratoRes.dados?.itens?.find(
+          (item) => String(item.display_id) === params.id || (item as any).id === params.id
+        ) || extratoRes.dados?.itens?.[0];
 
         if (found && mounted) {
           setTransaction(found);
@@ -65,6 +107,12 @@ export default function EditarLancamentoPage() {
 
           setNotes(found.observation || "");
           setTags(found.categories?.name ? [`#${found.categories.name}`] : []);
+
+          setSelectedCategoryId(found.categories?.id);
+          setSelectedCategoryName(found.categories?.name || "Geral");
+          setSelectedPaymentMethod(found.payment_method || "pix");
+          setSelectedAccountId(found.accounts?.id);
+          setSelectedAccountName(found.accounts?.name || "Conta Bancária");
         }
       } catch (err) {
         console.warn("Erro ao buscar detalhes da transação para edição:", err);
@@ -75,7 +123,7 @@ export default function EditarLancamentoPage() {
       }
     }
 
-    void loadTransaction();
+    void loadData();
     return () => {
       mounted = false;
     };
@@ -104,6 +152,8 @@ export default function EditarLancamentoPage() {
         description: merchant.trim(),
         total_amount: cleanAmount,
         entry_type: entryType,
+        category_id: selectedCategoryId,
+        payment_method: selectedPaymentMethod,
         observation: notes.trim() || undefined,
       });
 
@@ -131,6 +181,15 @@ export default function EditarLancamentoPage() {
     } catch (err: any) {
       showToast(err.message || "Erro ao excluir lançamento.");
     }
+  };
+
+  const toggleTag = (tagName: string) => {
+    setTags((prev) => {
+      if (prev.includes(tagName)) {
+        return prev.filter((t) => t !== tagName);
+      }
+      return [...prev, tagName];
+    });
   };
 
   const removeTag = (tagToRemove: string) => {
@@ -219,44 +278,44 @@ export default function EditarLancamentoPage() {
 
   return (
     <div className="bg-canvas font-sans text-body-md text-on-surface antialiased flex flex-col min-h-screen">
-      {/* Top Fixed Header */}
+      {/* Top Fixed Header - Padrão Guará */}
       <header className="fixed top-0 inset-x-0 z-50 bg-canvas/80 backdrop-blur-xl shadow-[0_1px_8px_rgba(0,0,0,0.04)] pt-safe">
-        <div className="h-14 px-4 max-w-xl mx-auto flex items-center justify-between">
+        <div className="h-14 px-4 max-w-xl mx-auto flex items-center justify-between gap-2">
           <button
-            aria-label="Cancelar edição"
-            className="h-11 px-2 -ml-2 flex items-center gap-1 text-mid-gray hover:text-ink transition-colors rounded-lg"
+            aria-label="Voltar"
+            className="h-9 px-3 rounded-full bg-white shadow-sm flex items-center gap-1.5 text-[12px] font-medium text-ink hover:bg-[#fafafa] active:scale-95 transition-all"
             onClick={() => router.back()}
             type="button"
           >
-            <span className="material-symbols-outlined text-[20px]">arrow_back</span>
-            <span className="text-[14px] font-medium">Cancelar</span>
+            <span className="material-symbols-outlined text-[18px]">arrow_back</span>
+            <span>Voltar</span>
           </button>
-          <h1 className="text-[18px] leading-[26px] font-semibold text-ink truncate px-2 text-center flex-1">
-            Editar Lançamento
-          </h1>
-          <div className="flex items-center justify-end gap-2">
-            <button
-              aria-label="Salvar lançamento"
-              className="h-11 px-3 flex items-center gap-1.5 text-paper bg-ink-soft hover:bg-ink active:scale-[0.98] transition-all rounded-full shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1)]"
-              onClick={handleSave}
-              type="button"
-              disabled={isSaving}
-            >
-              <span
-                className={`material-symbols-outlined text-[18px] ${
-                  isSaving ? "animate-spin" : ""
-                }`}
-              >
-                {isSaving ? "progress_activity" : "check"}
-              </span>
-              <span className="text-[13px] font-medium">
-                {isSaving ? "Salvando..." : "Salvar"}
-              </span>
-            </button>
-            <div className="w-8 h-8 rounded-full bg-primary flex items-center justify-center shrink-0 ml-1">
-              <span className="material-symbols-outlined text-on-primary text-[18px]">person</span>
-            </div>
+          
+          <div className="flex flex-col items-center justify-center min-w-0 flex-1">
+            <span className="text-[10px] text-[#737373] uppercase tracking-[0.16em] font-medium">
+              Guará Financeiro
+            </span>
+            <h1 className="text-[16px] font-semibold text-ink truncate leading-tight">
+              Editar Lançamento
+            </h1>
           </div>
+
+          <button
+            aria-label="Salvar lançamento"
+            className="h-9 px-3.5 flex items-center gap-1.5 text-white bg-[#0a0a0a] hover:bg-[#171717] active:scale-[0.98] transition-all rounded-full shadow-sm text-[12px] font-medium disabled:opacity-50"
+            onClick={handleSave}
+            type="button"
+            disabled={isSaving}
+          >
+            <span
+              className={`material-symbols-outlined text-[16px] ${
+                isSaving ? "animate-spin" : ""
+              }`}
+            >
+              {isSaving ? "progress_activity" : "check"}
+            </span>
+            <span>{isSaving ? "Salvando..." : "Salvar"}</span>
+          </button>
         </div>
       </header>
 
@@ -382,64 +441,82 @@ export default function EditarLancamentoPage() {
                   Categoria
                 </span>
                 <button
-                  aria-label="Alterar categoria de Alimentação e Restaurante"
-                  className="w-full p-3 bg-canvas hover:bg-surface-container active:scale-[0.99] rounded-[18px] flex items-center justify-between gap-2 transition-all text-left"
+                  aria-label="Alterar categoria"
+                  className="w-full p-3 bg-canvas hover:bg-surface-container active:scale-[0.99] rounded-[18px] flex items-center justify-between gap-2 transition-all text-left cursor-pointer border border-black/5"
                   type="button"
-                  onClick={() => showToast("Categoria classificada")}
+                  onClick={() => setModalCategoryOpen(true)}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-paper flex items-center justify-center shrink-0 shadow-sm">
-                      <span className="material-symbols-outlined text-ink text-[18px]">
-                        {transaction.categories?.name?.toLowerCase().includes("mercado")
+                    <div className="w-8 h-8 rounded-full bg-paper flex items-center justify-center shrink-0 shadow-sm text-ink">
+                      <span className="material-symbols-outlined text-[18px]">
+                        {selectedCategoryName.toLowerCase().includes("mercado")
                           ? "shopping_cart"
-                          : transaction.categories?.name?.toLowerCase().includes("refe") ||
-                            transaction.categories?.name?.toLowerCase().includes("alimen")
+                          : selectedCategoryName.toLowerCase().includes("refe") ||
+                            selectedCategoryName.toLowerCase().includes("alimen")
                           ? "restaurant"
+                          : selectedCategoryName.toLowerCase().includes("trans")
+                          ? "directions_car"
+                          : selectedCategoryName.toLowerCase().includes("saúde") ||
+                            selectedCategoryName.toLowerCase().includes("saude")
+                          ? "medical_services"
+                          : selectedCategoryName.toLowerCase().includes("lazer")
+                          ? "celebration"
                           : "category"}
                       </span>
                     </div>
                     <div className="flex flex-col min-w-0">
                       <div className="flex items-center gap-1.5">
-                        <span className="text-[14px] text-ink font-medium truncate">
-                          {transaction.categories?.name || "Geral"}
+                        <span className="text-[14px] text-ink font-semibold truncate">
+                          {selectedCategoryName}
                         </span>
                         <span className="px-2 py-0.5 rounded-[18px] bg-paper text-ink text-[10px] uppercase shadow-sm shrink-0 font-medium">
-                          Sincronizado
+                          Alterar
                         </span>
                       </div>
-                      <span className="text-[12px] text-mid-gray">Classificação automática</span>
+                      <span className="text-[12px] text-mid-gray">Toque para selecionar outra</span>
                     </div>
                   </div>
                   <span className="material-symbols-outlined text-mid-gray text-[20px] shrink-0">
-                    chevron_right
+                    expand_more
                   </span>
                 </button>
               </div>
 
-              {/* Conta de Origem Selector */}
+              {/* Conta de Origem / Forma de Pagamento */}
               <div className="flex flex-col gap-1.5">
                 <span className="text-[12px] uppercase text-mid-gray tracking-wider font-medium">
                   Conta de Origem / Pagamento
                 </span>
                 <button
-                  aria-label="Selecionar conta bancária"
-                  className="w-full p-3 bg-canvas hover:bg-surface-container active:scale-[0.99] rounded-[18px] flex items-center justify-between gap-2 transition-all text-left"
+                  aria-label="Selecionar conta bancária e pagamento"
+                  className="w-full p-3 bg-canvas hover:bg-surface-container active:scale-[0.99] rounded-[18px] flex items-center justify-between gap-2 transition-all text-left cursor-pointer border border-black/5"
                   type="button"
-                  onClick={() => showToast("Conta sincronizada via Open Finance")}
+                  onClick={() => setModalAccountOpen(true)}
                 >
                   <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-full bg-paper flex items-center justify-center shrink-0 shadow-sm">
-                      <span className="material-symbols-outlined text-ink text-[18px]">credit_card</span>
+                    <div className="w-8 h-8 rounded-full bg-paper flex items-center justify-center shrink-0 shadow-sm text-ink">
+                      <span className="material-symbols-outlined text-[18px]">
+                        {selectedPaymentMethod === "pix"
+                          ? "payments"
+                          : selectedPaymentMethod === "credit_card"
+                          ? "credit_card"
+                          : "account_balance"}
+                      </span>
                     </div>
                     <div className="flex flex-col min-w-0">
-                      <span className="text-[14px] text-ink font-medium truncate">
-                        {transaction.accounts?.name || "Conta Bancária"} ({transaction.payment_method || "Débito"})
-                      </span>
-                      <span className="text-[12px] text-mid-gray">Conta vinculada ao lançamento</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-[14px] text-ink font-semibold truncate">
+                          {selectedAccountName}
+                        </span>
+                        <span className="px-2 py-0.5 rounded-[18px] bg-paper text-ink text-[10px] uppercase shadow-sm shrink-0 font-medium">
+                          {selectedPaymentMethod === "credit_card" ? "Crédito" : selectedPaymentMethod === "pix" ? "PIX" : "Débito"}
+                        </span>
+                      </div>
+                      <span className="text-[12px] text-mid-gray">Toque para alterar conta ou método</span>
                     </div>
                   </div>
                   <span className="material-symbols-outlined text-mid-gray text-[20px] shrink-0">
-                    chevron_right
+                    expand_more
                   </span>
                 </button>
               </div>
@@ -598,35 +675,74 @@ export default function EditarLancamentoPage() {
                 />
               </div>
 
-              {/* Tags Collection */}
-              <div className="flex flex-col gap-2">
-                <label className="text-[12px] uppercase text-mid-gray tracking-wider font-medium">
-                  Tags Vinculadas
-                </label>
+              {/* Tags Pré-prontas e Tags Vinculadas */}
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between">
+                  <label className="text-[12px] uppercase text-mid-gray tracking-wider font-medium">
+                    Tags Rápidas (Toque para adicionar)
+                  </label>
+                  <span className="text-[11px] text-mid-gray">{tags.length} selecionada(s)</span>
+                </div>
+
+                {/* Pre-made tag pills */}
                 <div className="flex flex-wrap gap-1.5 items-center">
-                  {tags.map((t) => (
-                    <span
-                      key={t}
-                      className="h-7 px-2.5 rounded-[18px] bg-canvas flex items-center gap-1 text-[13px] text-ink group hover:bg-surface-container transition-colors"
-                    >
-                      <span>{t}</span>
+                  {PRESET_TAGS.map((pt) => {
+                    const isSelected = tags.includes(pt);
+                    return (
                       <button
-                        aria-label={`Remover tag ${t}`}
-                        className="text-mid-gray hover:text-ink flex items-center"
-                        onClick={() => removeTag(t)}
+                        key={pt}
                         type="button"
+                        onClick={() => toggleTag(pt)}
+                        className={`h-7 px-3 rounded-full text-[12px] font-medium transition-all flex items-center gap-1 cursor-pointer ${
+                          isSelected
+                            ? "bg-[#0a0a0a] text-white shadow-xs"
+                            : "bg-surface-alt text-mid-gray hover:text-ink hover:bg-surface-container"
+                        }`}
                       >
-                        <span className="material-symbols-outlined text-[14px]">close</span>
+                        {isSelected && (
+                          <span className="material-symbols-outlined text-[13px]">check</span>
+                        )}
+                        <span>{pt}</span>
                       </button>
-                    </span>
-                  ))}
+                    );
+                  })}
+                </div>
+
+                {/* Custom tags added */}
+                {tags.some((t) => !PRESET_TAGS.includes(t)) && (
+                  <div className="flex flex-col gap-1 pt-1">
+                    <span className="text-[11px] text-mid-gray">Tags personalizadas:</span>
+                    <div className="flex flex-wrap gap-1.5 items-center">
+                      {tags
+                        .filter((t) => !PRESET_TAGS.includes(t))
+                        .map((t) => (
+                          <span
+                            key={t}
+                            className="h-7 px-2.5 rounded-full bg-[#0a0a0a] text-white flex items-center gap-1 text-[12px] font-medium shadow-xs"
+                          >
+                            <span>{t}</span>
+                            <button
+                              aria-label={`Remover tag ${t}`}
+                              className="text-white/70 hover:text-white flex items-center"
+                              onClick={() => removeTag(t)}
+                              type="button"
+                            >
+                              <span className="material-symbols-outlined text-[13px]">close</span>
+                            </button>
+                          </span>
+                        ))}
+                    </div>
+                  </div>
+                )}
+
+                <div className="pt-0.5">
                   <button
-                    className="h-7 px-2.5 rounded-[18px] bg-canvas hover:bg-surface-container text-mid-gray hover:text-ink flex items-center gap-1 text-[13px] transition-colors"
+                    className="h-7 px-3 rounded-full bg-canvas border border-dashed border-mid-gray/40 hover:bg-surface-container text-mid-gray hover:text-ink flex items-center gap-1 text-[12px] transition-colors cursor-pointer"
                     onClick={addTag}
                     type="button"
                   >
                     <span className="material-symbols-outlined text-[14px]">add</span>
-                    <span>Nova Tag</span>
+                    <span>Criar tag personalizada</span>
                   </button>
                 </div>
               </div>
@@ -748,6 +864,157 @@ export default function EditarLancamentoPage() {
               >
                 Cancelar
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Bottom Sheet: Selecionar Categoria */}
+      {modalCategoryOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-paper rounded-t-[28px] sm:rounded-[28px] p-6 shadow-2xl border border-black/5 flex flex-col gap-4 animate-in slide-in-from-bottom-5 duration-200 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-black/5">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[20px] text-ink">category</span>
+                <h3 className="text-[16px] font-semibold text-ink">Selecionar Categoria</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalCategoryOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-mid-gray hover:text-ink cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 py-1">
+              {availableCategories.map((cat) => {
+                const isSelected = selectedCategoryId === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => {
+                      setSelectedCategoryId(cat.id);
+                      setSelectedCategoryName(cat.name);
+                      setModalCategoryOpen(false);
+                    }}
+                    className={`p-3 rounded-[16px] flex items-center gap-2.5 text-left transition-all border cursor-pointer ${
+                      isSelected
+                        ? "bg-[#0a0a0a] text-white border-transparent shadow-sm"
+                        : "bg-surface-alt hover:bg-surface-container text-ink border-transparent"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      {cat.name.toLowerCase().includes("mercado")
+                        ? "shopping_cart"
+                        : cat.name.toLowerCase().includes("refe") || cat.name.toLowerCase().includes("alimen")
+                        ? "restaurant"
+                        : cat.name.toLowerCase().includes("trans")
+                        ? "directions_car"
+                        : cat.name.toLowerCase().includes("saúde") || cat.name.toLowerCase().includes("saude")
+                        ? "medical_services"
+                        : cat.name.toLowerCase().includes("lazer")
+                        ? "celebration"
+                        : "label"}
+                    </span>
+                    <span className="text-[13px] font-medium truncate">{cat.name}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Bottom Sheet: Selecionar Conta e Forma de Pagamento */}
+      {modalAccountOpen && (
+        <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-paper rounded-t-[28px] sm:rounded-[28px] p-6 shadow-2xl border border-black/5 flex flex-col gap-4 animate-in slide-in-from-bottom-5 duration-200 max-h-[85vh] overflow-y-auto">
+            <div className="flex items-center justify-between pb-2 border-b border-black/5">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[20px] text-ink">account_balance</span>
+                <h3 className="text-[16px] font-semibold text-ink">Conta &amp; Pagamento</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalAccountOpen(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-mid-gray hover:text-ink cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            {/* Método de Pagamento */}
+            <div className="flex flex-col gap-1.5">
+              <span className="text-[11px] uppercase tracking-wider text-mid-gray font-medium">
+                Método de Pagamento
+              </span>
+              <div className="grid grid-cols-3 gap-1.5 bg-canvas p-1 rounded-[16px]">
+                {[
+                  { id: "pix", label: "PIX", icon: "payments" },
+                  { id: "credit_card", label: "Crédito", icon: "credit_card" },
+                  { id: "debit_card", label: "Débito", icon: "account_balance_wallet" },
+                ].map((m) => (
+                  <button
+                    key={m.id}
+                    type="button"
+                    onClick={() => setSelectedPaymentMethod(m.id)}
+                    className={`py-2 px-1 rounded-[12px] flex items-center justify-center gap-1 text-[12px] font-medium transition-all cursor-pointer ${
+                      selectedPaymentMethod === m.id
+                        ? "bg-[#0a0a0a] text-white shadow-xs"
+                        : "text-mid-gray hover:text-ink"
+                    }`}
+                  >
+                    <span className="material-symbols-outlined text-[14px]">{m.icon}</span>
+                    <span>{m.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Conta Bancária */}
+            <div className="flex flex-col gap-1.5 pt-1">
+              <span className="text-[11px] uppercase tracking-wider text-mid-gray font-medium">
+                Conta Vinculada
+              </span>
+              <div className="flex flex-col gap-1.5">
+                {availableAccounts.length === 0 ? (
+                  <div className="p-3 rounded-[16px] bg-surface-alt text-[12px] text-mid-gray text-center">
+                    Nenhuma conta cadastrada adicionalmente.
+                  </div>
+                ) : (
+                  availableAccounts.map((acc) => {
+                    const isSelected = selectedAccountId === acc.id;
+                    return (
+                      <button
+                        key={acc.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedAccountId(acc.id);
+                          setSelectedAccountName(acc.name);
+                          setModalAccountOpen(false);
+                        }}
+                        className={`p-3 rounded-[16px] flex items-center justify-between border transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-[#0a0a0a] text-white border-transparent shadow-sm"
+                            : "bg-surface-alt hover:bg-surface-container text-ink border-transparent"
+                        }`}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <span className="material-symbols-outlined text-[18px]">
+                            {acc.type === "checking" ? "account_balance" : "savings"}
+                          </span>
+                          <span className="text-[13px] font-medium">{acc.name}</span>
+                        </div>
+                        <span className="text-[12px] font-mono opacity-80">
+                          R$ {acc.balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        </span>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
             </div>
           </div>
         </div>

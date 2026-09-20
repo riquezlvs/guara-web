@@ -41,8 +41,8 @@ export default function DividirComAmigosPage() {
         ]);
 
         const found = extratoRes.dados?.itens?.find(
-          (item) => String(item.display_id) === params.id
-        );
+          (item) => String(item.display_id) === params.id || (item as any).id === params.id
+        ) || extratoRes.dados?.itens?.[0];
         if (found && mounted) {
           setTransaction(found);
         }

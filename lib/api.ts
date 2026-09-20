@@ -727,11 +727,11 @@ export interface ResumoQuemMeDeve {
   }>;
 }
 
-/**
- * Obtém a lista de pessoas do banco de dados com seus saldos devedores calculados
- */
-export async function obterPessoas(busca?: string): Promise<{ sucesso: boolean; dados: PessoaItem[] }> {
-  const query = busca ? `?busca=${encodeURIComponent(busca)}` : '';
+export async function obterPessoas(busca?: string, mesAno?: string): Promise<{ sucesso: boolean; dados: PessoaItem[] }> {
+  const params = new URLSearchParams();
+  if (busca) params.append('busca', busca);
+  if (mesAno) params.append('mesAno', mesAno);
+  const query = params.toString() ? `?${params.toString()}` : '';
   const res = await fetch(`${API_BASE_URL}/api/people${query}`, {
     method: 'GET',
     headers: {
@@ -744,6 +744,32 @@ export async function obterPessoas(busca?: string): Promise<{ sucesso: boolean; 
     throw new Error(`Erro ao obter pessoas: ${res.status}`);
   }
 
+  return res.json();
+}
+
+/**
+ * Obtém a lista de categorias disponíveis cadastradas no sistema
+ */
+export async function obterCategoriasDisponiveis(): Promise<{ sucesso: boolean; dados: Array<{ id: number; name: string }> }> {
+  const res = await fetch(`${API_BASE_URL}/api/categories`, {
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    throw new Error(`Erro ao obter categorias: ${res.status}`);
+  }
+  return res.json();
+}
+
+/**
+ * Obtém a lista de contas financeiras ativas cadastradas no sistema
+ */
+export async function obterContasDisponiveis(): Promise<{ sucesso: boolean; dados: Array<{ id: string; name: string; type: string; balance: number }> }> {
+  const res = await fetch(`${API_BASE_URL}/api/accounts`, {
+    cache: 'no-store',
+  });
+  if (!res.ok) {
+    throw new Error(`Erro ao obter contas: ${res.status}`);
+  }
   return res.json();
 }
 
@@ -900,6 +926,23 @@ export async function adicionarAporteInvestimento(dados: {
   saldoAtual?: number;
 }): Promise<{ sucesso: boolean; mensagem: string }> {
   const novoSaldo = (dados.saldoAtual || 0) + dados.valorAporte;
+  return ajustarSaldoInvestimento({
+    accountId: dados.accountId,
+    name: dados.name,
+    novoSaldo,
+  });
+}
+
+/**
+ * Resgata / retira um valor de uma caixinha ou meta
+ */
+export async function resgatarValorInvestimento(dados: {
+  accountId?: string;
+  name: string;
+  valorResgate: number;
+  saldoAtual?: number;
+}): Promise<{ sucesso: boolean; mensagem: string }> {
+  const novoSaldo = Math.max(0, (dados.saldoAtual || 0) - dados.valorResgate);
   return ajustarSaldoInvestimento({
     accountId: dados.accountId,
     name: dados.name,

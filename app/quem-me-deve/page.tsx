@@ -21,6 +21,11 @@ export default function QuemMeDevePage() {
   const [isLoading, setIsLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
 
+  // Filtro por Mês (Padrão: Mês Atual)
+  const mesAtualStr = new Date().toISOString().substring(0, 7); // 'YYYY-MM'
+  const [mesSelecionado, setMesSelecionado] = useState<string>(mesAtualStr);
+  const [mostrarOutrosMeses, setMostrarOutrosMeses] = useState(false);
+
   // Feedback do botão Pix
   const [pixCopiado, setPixCopiado] = useState(false);
 
@@ -41,11 +46,11 @@ export default function QuemMeDevePage() {
   const [feedbackMensagem, setFeedbackMensagem] = useState("");
 
   // Carrega dados diretamente da API / Supabase
-  const carregarDados = useCallback(async () => {
+  const carregarDados = useCallback(async (mes?: string) => {
     setIsLoading(true);
     try {
       const [respPessoas, respResumo] = await Promise.all([
-        obterPessoas().catch((err) => {
+        obterPessoas(undefined, mes !== "todos" ? (mes || mesSelecionado) : undefined).catch((err) => {
           console.warn("Erro ao buscar pessoas da API:", err);
           return { sucesso: false, dados: [] };
         }),
@@ -71,14 +76,14 @@ export default function QuemMeDevePage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [mesSelecionado]);
 
   useEffect(() => {
-    carregarDados();
-    const handleRefresh = () => carregarDados();
+    carregarDados(mesSelecionado);
+    const handleRefresh = () => carregarDados(mesSelecionado);
     window.addEventListener("finances:refresh", handleRefresh);
     return () => window.removeEventListener("finances:refresh", handleRefresh);
-  }, [carregarDados]);
+  }, [carregarDados, mesSelecionado]);
 
   const copiarPix = () => {
     if (typeof navigator !== "undefined" && navigator.clipboard) {
@@ -301,6 +306,75 @@ export default function QuemMeDevePage() {
                   <span className="text-[18px] font-semibold text-[#0a0a0a]">{pessoas.length}</span>
                   <span className="text-[12px] text-[#737373] leading-tight mt-0.5">cadastrados</span>
                 </div>
+              </div>
+
+              {/* Botão e Painel de Seleção de Mês */}
+              <div className="pt-2 border-t border-black/5 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-[12px] text-[#737373]">
+                    <span className="material-symbols-outlined text-[16px]">calendar_month</span>
+                    <span>
+                      Exibindo: <strong className="text-[#0a0a0a]">{mesSelecionado === "todos" ? "Todos os meses" : mesSelecionado}</strong>
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setMostrarOutrosMeses(!mostrarOutrosMeses)}
+                    className="h-7 px-2.5 rounded-full bg-[#f5f5f5] hover:bg-[#ebebeb] text-[#0a0a0a] text-[11px] font-medium transition-colors flex items-center gap-1"
+                  >
+                    <span>{mostrarOutrosMeses ? "Ocultar meses" : "Ver outros meses"}</span>
+                    <span className="material-symbols-outlined text-[14px]">
+                      {mostrarOutrosMeses ? "expand_less" : "expand_more"}
+                    </span>
+                  </button>
+                </div>
+
+                {mostrarOutrosMeses && (
+                  <div className="flex items-center gap-1.5 overflow-x-auto pb-1 pt-1 scrollbar-none animate-in fade-in duration-150">
+                    <button
+                      type="button"
+                      onClick={() => setMesSelecionado(mesAtualStr)}
+                      className={`h-7 px-2.5 rounded-full text-[11px] font-medium transition-all shrink-0 ${
+                        mesSelecionado === mesAtualStr
+                          ? "bg-black text-white"
+                          : "bg-[#f5f5f5] text-[#737373] hover:text-[#0a0a0a]"
+                      }`}
+                    >
+                      Mês Atual ({mesAtualStr})
+                    </button>
+                    {[-1, -2, -3, -4].map((offset) => {
+                      const d = new Date();
+                      d.setMonth(d.getMonth() + offset);
+                      const mStr = d.toISOString().substring(0, 7);
+                      const label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+                      return (
+                        <button
+                          key={mStr}
+                          type="button"
+                          onClick={() => setMesSelecionado(mStr)}
+                          className={`h-7 px-2.5 rounded-full text-[11px] font-medium transition-all shrink-0 capitalize ${
+                            mesSelecionado === mStr
+                              ? "bg-black text-white"
+                              : "bg-[#f5f5f5] text-[#737373] hover:text-[#0a0a0a]"
+                          }`}
+                        >
+                          {label}
+                        </button>
+                      );
+                    })}
+                    <button
+                      type="button"
+                      onClick={() => setMesSelecionado("todos")}
+                      className={`h-7 px-2.5 rounded-full text-[11px] font-medium transition-all shrink-0 ${
+                        mesSelecionado === "todos"
+                          ? "bg-black text-white"
+                          : "bg-[#f5f5f5] text-[#737373] hover:text-[#0a0a0a]"
+                      }`}
+                    >
+                      Histórico Geral
+                    </button>
+                  </div>
+                )}
               </div>
             </section>
 
