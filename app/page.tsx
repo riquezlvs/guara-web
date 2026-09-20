@@ -270,13 +270,50 @@ export default function Home() {
     };
   }, [dashboardData]);
 
-  // Metas / Caixinhas
-  const primeiraMeta = useMemo(() => {
-    if (!dashboardData?.poupanca || dashboardData.poupanca.length === 0) return null;
-    const meta = dashboardData.poupanca[0];
-    const pct = meta.alvo > 0 ? Math.round((meta.poupado / meta.alvo) * 100) : 0;
-    return { ...meta, percentual: pct };
+  // Metas & Caixinhas (Combina metas de poupanca com contas de renda fixa como a Caixinha Nubank)
+  const metasECaixinhas = useMemo(() => {
+    const list: Array<{
+      id: string;
+      nome: string;
+      saldo: number;
+      alvo?: number;
+      percentual: number;
+    }> = [];
+
+    // 1. Metas do módulo de poupança
+    if (dashboardData?.poupanca && dashboardData.poupanca.length > 0) {
+      dashboardData.poupanca.forEach((m) => {
+        const pct = m.alvo > 0 ? Math.round((m.poupado / m.alvo) * 100) : 0;
+        list.push({
+          id: `goal-${m.id}`,
+          nome: m.nome,
+          saldo: m.poupado,
+          alvo: m.alvo,
+          percentual: pct,
+        });
+      });
+    }
+
+    // 2. Caixinhas e Renda Fixa vindas do patrimônio (ex: Caixinha Nubank)
+    const fixedAccounts = dashboardData?.patrimonio?.fixedIncome?.accounts || [];
+    fixedAccounts.forEach((acc, i) => {
+      // Se já não tiver uma meta com o mesmo nome
+      const jaExiste = list.some((item) => item.nome.toLowerCase() === acc.name.toLowerCase());
+      if (!jaExiste) {
+        list.push({
+          id: `fixed-${i}-${acc.name}`,
+          nome: acc.name,
+          saldo: acc.balance,
+          alvo: undefined,
+          percentual: 100,
+        });
+      }
+    });
+
+    return list;
   }, [dashboardData]);
+
+  const primeiraMeta = metasECaixinhas[0] || null;
 
   return (
     <main className="flex-1 flex flex-col relative w-full pt-16 pb-44 px-4 max-w-md mx-auto">
@@ -292,9 +329,22 @@ export default function Home() {
         {/* 1. Safe-to-Spend Header Block */}
         <section className="flex flex-col gap-2 pt-2">
           <div className="flex items-center justify-between">
-            <span className="text-[12px] uppercase tracking-[0.05em] text-[#737373] font-medium">
-              Saldo Safe-to-Spend
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="text-[12px] uppercase tracking-[0.05em] text-[#737373] font-medium">
+                Saldo Safe-to-Spend
+              </span>
+              <button
+                type="button"
+                onClick={toggleValuesVisibility}
+                aria-label={isValuesHidden ? "Mostrar valores" : "Ocultar valores"}
+                className="w-6 h-6 rounded-full flex items-center justify-center text-[#737373] hover:text-[#0a0a0a] hover:bg-black/5 active:scale-95 transition-all cursor-pointer"
+                title={isValuesHidden ? "Mostrar valores" : "Ocultar valores"}
+              >
+                <span className="material-symbols-outlined text-[17px]">
+                  {isValuesHidden ? "visibility_off" : "visibility"}
+                </span>
+              </button>
+            </div>
             <span className="inline-flex items-center gap-1.5 text-[#737373] text-[12px]">
               <span className={`w-1.5 h-1.5 rounded-full ${isLoading ? "bg-amber-500 animate-pulse" : "bg-emerald-500"}`}></span>
               {isLoading ? "Sincronizando..." : "Sincronizado"}
@@ -313,7 +363,9 @@ export default function Home() {
               </div>
             ) : (
               <h1 className="text-[38px] text-[#0a0a0a] font-semibold tracking-[-0.03em] leading-none">
-                R$ {safeMetrics.safeToSpend.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                {isValuesHidden
+                  ? "R$ ••••••"
+                  : `R$ ${safeMetrics.safeToSpend.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
               </h1>
             )}
           </div>
@@ -324,8 +376,11 @@ export default function Home() {
             ) : (
               <span>
                 Disponível para gastar nos próximos{" "}
-                <span className="font-semibold text-[#0a0a0a]">{safeMetrics.daysLeft} dias</span> do mês (média de R${" "}
-                {safeMetrics.dailyAllowance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/dia)
+                <span className="font-semibold text-[#0a0a0a]">{safeMetrics.daysLeft} dias</span> do mês (média de{" "}
+                {isValuesHidden
+                  ? "R$ ••••••/dia"
+                  : `R$ ${safeMetrics.dailyAllowance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/dia`}
+                )
               </span>
             )}
           </div>
@@ -423,7 +478,9 @@ export default function Home() {
               </div>
             ) : (
               <div className="text-[28px] font-semibold tracking-tight text-[#0a0a0a] leading-tight">
-                R$ {(dashboardData?.patrimonio?.totalNetWorth ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                {isValuesHidden
+                  ? "R$ ••••••"
+                  : `R$ ${(dashboardData?.patrimonio?.totalNetWorth ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
               </div>
             )}
             <span className="text-[12px] text-[#737373]">
@@ -438,6 +495,8 @@ export default function Home() {
               <span className="text-[#737373] font-mono">
                 {isLoading
                   ? "..."
+                  : isValuesHidden
+                  ? "R$ ••••••"
                   : `R$ ${(dashboardData?.patrimonio?.liquidAssets?.total ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
               </span>
             </div>
@@ -454,6 +513,8 @@ export default function Home() {
               <span className="font-medium text-[#0a0a0a]">
                 {isLoading
                   ? "..."
+                  : isValuesHidden
+                  ? "R$ ••••••"
                   : `R$ ${(dashboardData?.patrimonio?.liquidAssets?.total ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
               </span>
               <div className="text-[10px] text-[#737373]">
@@ -465,6 +526,8 @@ export default function Home() {
               <span className="font-medium text-[#0a0a0a]">
                 {isLoading
                   ? "..."
+                  : isValuesHidden
+                  ? "R$ ••••••"
                   : `R$ ${(dashboardData?.patrimonio?.openCreditInvoices?.total ?? 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
               </span>
               <div className="text-[10px] text-[#737373]">
@@ -474,7 +537,7 @@ export default function Home() {
           </div>
         </Link>
 
-        {/* 4. Fluxo Mensal & Evolução (Area / Line Chart) */}
+        {/* 4. Fluxo Mensal & Evolução (Interactive Area / Line Chart) */}
         <div className="w-full rounded-[24px] bg-white p-5 border border-black/5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <span className="text-[12px] uppercase tracking-[0.05em] text-[#737373] font-medium">
@@ -483,7 +546,10 @@ export default function Home() {
             <div className="flex gap-1 bg-[#f5f5f5] p-0.5 rounded-[12px]">
               <button
                 type="button"
-                onClick={() => setActiveRange("7D")}
+                onClick={() => {
+                  setActiveRange("7D");
+                  setSelectedPointIndex(null);
+                }}
                 className={`px-2 py-0.5 text-[11px] font-medium rounded-[10px] transition-colors cursor-pointer ${
                   activeRange === "7D" ? "bg-white text-[#0a0a0a] shadow-sm font-semibold" : "text-[#737373] hover:text-[#0a0a0a]"
                 }`}
@@ -492,7 +558,10 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                onClick={() => setActiveRange("30D")}
+                onClick={() => {
+                  setActiveRange("30D");
+                  setSelectedPointIndex(null);
+                }}
                 className={`px-2 py-0.5 text-[11px] font-medium rounded-[10px] transition-colors cursor-pointer ${
                   activeRange === "30D" ? "bg-white text-[#0a0a0a] shadow-sm font-semibold" : "text-[#737373] hover:text-[#0a0a0a]"
                 }`}
@@ -501,7 +570,10 @@ export default function Home() {
               </button>
               <button
                 type="button"
-                onClick={() => setActiveRange("6M")}
+                onClick={() => {
+                  setActiveRange("6M");
+                  setSelectedPointIndex(null);
+                }}
                 className={`px-2 py-0.5 text-[11px] font-medium rounded-[10px] transition-colors cursor-pointer ${
                   activeRange === "6M" ? "bg-white text-[#0a0a0a] shadow-sm font-semibold" : "text-[#737373] hover:text-[#0a0a0a]"
                 }`}
@@ -516,12 +588,18 @@ export default function Home() {
               <span className="text-[24px] font-semibold tracking-tight text-[#0a0a0a]">
                 {isLoading ? (
                   <span className="animate-pulse">...</span>
+                ) : isValuesHidden ? (
+                  "R$ ••••••"
+                ) : selectedPointIndex !== null && chartPoints.points[selectedPointIndex] ? (
+                  `R$ ${chartPoints.points[selectedPointIndex].total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
                 ) : (
                   `R$ ${chartPoints.totalPeriodo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`
                 )}
               </span>
               <span className="text-[12px] text-[#737373] block">
-                {activeRange === "7D"
+                {selectedPointIndex !== null && chartPoints.points[selectedPointIndex]
+                  ? `Gasto em ${chartPoints.points[selectedPointIndex].label} (toque novamente para resetar)`
+                  : activeRange === "7D"
                   ? "Saídas nos últimos 7 dias"
                   : activeRange === "30D"
                   ? "Saídas nos últimos 30 dias"
@@ -539,7 +617,7 @@ export default function Home() {
             )}
           </div>
 
-          {/* Native High-Performance SVG Chart */}
+          {/* Native High-Performance Interactive SVG Chart */}
           <div className="w-full h-[120px] relative flex items-end pt-2">
             {isLoading ? (
               <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-[#737373]">
@@ -578,16 +656,49 @@ export default function Home() {
                   />
                 )}
 
+                {/* Active selection vertical line */}
+                {selectedPointIndex !== null && chartPoints.points[selectedPointIndex] && (
+                  <line
+                    x1={chartPoints.points[selectedPointIndex].x}
+                    y1="10"
+                    x2={chartPoints.points[selectedPointIndex].x}
+                    y2="100"
+                    stroke="#0a0a0a"
+                    strokeDasharray="2 2"
+                    strokeWidth="1"
+                  />
+                )}
+
                 {/* Point markers */}
+                {chartPoints.points.map((pt, i) => {
+                  const isSelected = selectedPointIndex === i;
+                  const isLast = i === chartPoints.points.length - 1;
+                  return (
+                    <circle
+                      key={i}
+                      cx={pt.x}
+                      cy={pt.y}
+                      r={isSelected ? "5" : isLast ? "3.5" : "2.5"}
+                      fill={isSelected ? "#0a0a0a" : isLast ? "#0a0a0a" : "#737373"}
+                      stroke="#ffffff"
+                      strokeWidth={isSelected ? "2" : "1.5"}
+                      className="transition-all duration-150"
+                    />
+                  );
+                })}
+
+                {/* Invisible large touch targets for interactivity */}
                 {chartPoints.points.map((pt, i) => (
-                  <circle
-                    key={i}
-                    cx={pt.x}
-                    cy={pt.y}
-                    r={i === chartPoints.points.length - 1 ? "3.5" : "2"}
-                    fill={i === chartPoints.points.length - 1 ? "#0a0a0a" : "#737373"}
-                    stroke="#ffffff"
-                    strokeWidth="1.5"
+                  <rect
+                    key={`hit-${i}`}
+                    x={Math.max(0, pt.x - 14)}
+                    y="0"
+                    width="28"
+                    height="110"
+                    fill="transparent"
+                    className="cursor-pointer"
+                    onClick={() => setSelectedPointIndex((prev) => (prev === i ? null : i))}
+                    onMouseEnter={() => setSelectedPointIndex(i)}
                   />
                 ))}
               </svg>
@@ -601,14 +712,18 @@ export default function Home() {
           </div>
         </div>
 
-        {/* 5. Gastos por Categoria (Monochrome Donut Chart) */}
+        {/* 5. Gastos por Categoria (Interactive Monochrome Donut Chart) */}
         <div className="w-full rounded-[24px] bg-white p-5 border border-black/5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex flex-col gap-4">
           <div className="flex items-center justify-between">
             <span className="text-[12px] uppercase tracking-[0.05em] text-[#737373] font-medium">
               Categorias ({donutData.rotuloMes})
             </span>
             <span className="text-[11px] font-mono text-[#737373]">
-              {isLoading ? "..." : `R$ ${donutData.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+              {isLoading
+                ? "..."
+                : isValuesHidden
+                ? "R$ ••••••"
+                : `R$ ${donutData.total.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
             </span>
           </div>
 
@@ -630,33 +745,65 @@ export default function Home() {
                       fill="transparent"
                       stroke="#f5f5f5"
                       strokeWidth="12"
+                      className="cursor-pointer"
+                      onClick={() => setSelectedCategoryIndex(null)}
                     />
 
                     {/* Dynamic colored segments */}
-                    {donutData.segments.map((seg, i) => (
-                      <circle
-                        key={i}
-                        cx="50"
-                        cy="50"
-                        r="38"
-                        fill="transparent"
-                        stroke={seg.cor}
-                        strokeWidth="12"
-                        strokeDasharray={seg.dashArray}
-                        strokeDashoffset={seg.dashOffset}
-                        strokeLinecap="butt"
-                        className="transition-all duration-500"
-                      />
-                    ))}
+                    {donutData.segments.map((seg, i) => {
+                      const isSelected = selectedCategoryIndex === i;
+                      return (
+                        <circle
+                          key={i}
+                          cx="50"
+                          cy="50"
+                          r="38"
+                          fill="transparent"
+                          stroke={seg.cor}
+                          strokeWidth={isSelected ? "15" : "12"}
+                          strokeDasharray={seg.dashArray}
+                          strokeDashoffset={seg.dashOffset}
+                          strokeLinecap="butt"
+                          className="transition-all duration-300 cursor-pointer hover:opacity-80"
+                          onClick={() => setSelectedCategoryIndex((prev) => (prev === i ? null : i))}
+                          onMouseEnter={() => setSelectedCategoryIndex(i)}
+                        />
+                      );
+                    })}
                   </svg>
 
-                  <div className="absolute flex flex-col items-center justify-center text-center">
-                    <span className="text-[10px] uppercase text-[#737373] tracking-wider leading-none">
-                      Total
-                    </span>
-                    <span className="text-[13px] font-semibold text-[#0a0a0a] leading-tight font-mono">
-                      R$ {donutData.total >= 1000 ? `${(donutData.total / 1000).toFixed(1)}k` : donutData.total.toFixed(0)}
-                    </span>
+                  <div
+                    className="absolute flex flex-col items-center justify-center text-center px-1 cursor-pointer select-none"
+                    onClick={() => setSelectedCategoryIndex(null)}
+                  >
+                    {selectedCategoryIndex !== null && donutData.segments[selectedCategoryIndex] ? (
+                      <>
+                        <span className="text-[9px] uppercase text-[#737373] tracking-wider leading-none truncate max-w-[65px]">
+                          {donutData.segments[selectedCategoryIndex].categoria}
+                        </span>
+                        <span className="text-[12px] font-semibold text-[#0a0a0a] leading-tight font-mono">
+                          {isValuesHidden
+                            ? "••••"
+                            : `R$ ${donutData.segments[selectedCategoryIndex].total.toFixed(0)}`}
+                        </span>
+                        <span className="text-[9px] text-[#737373] font-mono">
+                          {donutData.segments[selectedCategoryIndex].percentual}%
+                        </span>
+                      </>
+                    ) : (
+                      <>
+                        <span className="text-[10px] uppercase text-[#737373] tracking-wider leading-none">
+                          Total
+                        </span>
+                        <span className="text-[13px] font-semibold text-[#0a0a0a] leading-tight font-mono">
+                          {isValuesHidden
+                            ? "••••"
+                            : donutData.total >= 1000
+                            ? `R$ ${(donutData.total / 1000).toFixed(1)}k`
+                            : `R$ ${donutData.total.toFixed(0)}`}
+                        </span>
+                      </>
+                    )}
                   </div>
                 </>
               )}
@@ -672,20 +819,37 @@ export default function Home() {
               ) : donutData.segments.length === 0 ? (
                 <div className="text-[12px] text-[#737373]">Nenhum gasto categorizado no mês.</div>
               ) : (
-                donutData.segments.map((cat, idx) => (
-                  <div key={idx} className="flex items-center justify-between text-[12px]">
-                    <div className="flex items-center gap-2 min-w-0">
-                      <span
-                        className="w-2 h-2 rounded-full shrink-0"
-                        style={{ backgroundColor: cat.cor }}
-                      ></span>
-                      <span className="text-[#0a0a0a] truncate">{cat.categoria}</span>
-                    </div>
-                    <span className="font-mono text-[#737373] text-[11px] shrink-0 ml-2">
-                      {cat.percentual}%
-                    </span>
-                  </div>
-                ))
+                donutData.segments.map((cat, idx) => {
+                  const isSelected = selectedCategoryIndex === idx;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setSelectedCategoryIndex((prev) => (prev === idx ? null : idx))}
+                      className={`flex items-center justify-between text-[12px] w-full text-left rounded-md p-1 -m-1 transition-all cursor-pointer ${
+                        isSelected ? "bg-black/5 font-semibold" : "hover:bg-[#fafafa]"
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: cat.cor }}
+                        ></span>
+                        <span className="text-[#0a0a0a] truncate">{cat.categoria}</span>
+                      </div>
+                      <div className="flex items-center gap-1.5 shrink-0 ml-2">
+                        {!isValuesHidden && (
+                          <span className="font-mono text-[10px] text-[#737373]">
+                            R$ {cat.total.toLocaleString("pt-BR", { minimumFractionDigits: 0, maximumFractionDigits: 0 })}
+                          </span>
+                        )}
+                        <span className="font-mono text-[#737373] text-[11px]">
+                          {cat.percentual}%
+                        </span>
+                      </div>
+                    </button>
+                  );
+                })
               )}
             </div>
           </div>
@@ -697,9 +861,12 @@ export default function Home() {
             <span className="text-[12px] uppercase tracking-[0.05em] text-[#737373] font-medium">
               Caixinhas & Metas
             </span>
-            <span className="text-[11px] font-mono text-[#737373] bg-[#f5f5f5] px-2 py-0.5 rounded-[12px]">
+            <Link
+              href="/investimentos"
+              className="text-[11px] font-mono text-[#737373] bg-[#f5f5f5] hover:bg-black/5 px-2 py-0.5 rounded-[12px] transition-colors"
+            >
               100% CDI
-            </span>
+            </Link>
           </div>
 
           {isLoading ? (
@@ -707,44 +874,56 @@ export default function Home() {
               <span className="material-symbols-outlined text-[20px] animate-spin">
                 progress_activity
               </span>
-              <span className="text-[13px] text-[#737373]">Carregando metas...</span>
+              <span className="text-[13px] text-[#737373]">Carregando metas e caixinhas...</span>
             </div>
-          ) : primeiraMeta ? (
-            <div className="flex flex-col gap-2">
-              <div className="flex items-baseline justify-between">
-                <span className="text-[18px] font-semibold text-[#0a0a0a]">
-                  R$ {primeiraMeta.poupado.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
-                </span>
-                <span className="text-[12px] text-[#737373]">
-                  Meta: R$ {primeiraMeta.alvo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} ({primeiraMeta.percentual}%)
-                </span>
-              </div>
+          ) : metasECaixinhas.length > 0 ? (
+            <div className="flex flex-col divide-y divide-black/5">
+              {metasECaixinhas.map((item, idx) => (
+                <div key={item.id || idx} className={`flex flex-col gap-2 ${idx > 0 ? "pt-3 mt-3" : ""}`}>
+                  <div className="flex items-baseline justify-between">
+                    <span className="text-[18px] font-semibold text-[#0a0a0a]">
+                      {isValuesHidden
+                        ? "R$ ••••••"
+                        : `R$ ${item.saldo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                    </span>
+                    {item.alvo ? (
+                      <span className="text-[12px] text-[#737373]">
+                        Meta: {isValuesHidden ? "R$ ••••••" : `R$ ${item.alvo.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`} ({item.percentual}%)
+                      </span>
+                    ) : (
+                      <span className="text-[11px] font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">
+                        Rendimento Ativo
+                      </span>
+                    )}
+                  </div>
 
-              {/* Minimalist Progress Track */}
-              <div className="w-full h-1.5 bg-[#f5f5f5] rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-[#0a0a0a] rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(primeiraMeta.percentual, 100)}%` }}
-                ></div>
-              </div>
+                  {/* Progress track */}
+                  <div className="w-full h-1.5 bg-[#f5f5f5] rounded-full overflow-hidden">
+                    <div
+                      className="h-full bg-[#0a0a0a] rounded-full transition-all duration-500"
+                      style={{ width: `${Math.min(item.percentual || 100, 100)}%` }}
+                    ></div>
+                  </div>
 
-              <div className="flex items-center justify-between pt-1">
-                <div className="flex items-center gap-1.5">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                  <span className="text-[12px] text-[#737373]">{primeiraMeta.nome}</span>
+                  <div className="flex items-center justify-between pt-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                      <span className="text-[12px] text-[#737373]">{item.nome}</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleTriggerQuickEntry(`Aporte 500 na ${item.nome}`)}
+                      className="text-[11px] text-[#0a0a0a] font-medium hover:underline cursor-pointer"
+                    >
+                      Adicionar aporte
+                    </button>
+                  </div>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => handleTriggerQuickEntry(`Aporte 500 na ${primeiraMeta.nome}`)}
-                  className="text-[11px] text-[#0a0a0a] font-medium hover:underline cursor-pointer"
-                >
-                  Adicionar aporte
-                </button>
-              </div>
+              ))}
             </div>
           ) : (
             <div className="p-3 text-center text-[#737373] text-[12px]">
-              Nenhuma meta cadastrada ainda. Diga ex: &quot;Guardar 500 para reserva&quot;.
+              Nenhuma meta ou caixinha cadastrada ainda. Diga ex: &quot;Guardar 500 para reserva&quot;.
             </div>
           )}
         </div>
@@ -786,6 +965,11 @@ export default function Home() {
                   minute: "2-digit",
                 });
                 const categoriaNome = item.categories?.name || "Geral";
+                const isIncome = item.entry_type === "income";
+                const valorTotalFinal = item.installmentTotal && item.installmentTotal > 1
+                  ? Number(item.total_amount) * item.installmentTotal
+                  : Number(item.total_amount);
+
                 return (
                   <Link
                     key={item.display_id || idx}
@@ -794,9 +978,13 @@ export default function Home() {
                   >
                     <div className="p-4 flex items-center justify-between">
                       <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-9 h-9 rounded-[18px] bg-[#f5f5f5] flex items-center justify-center text-[#0a0a0a] shrink-0">
+                        <div className={`w-9 h-9 rounded-[18px] flex items-center justify-center shrink-0 ${
+                          isIncome ? "bg-emerald-50 text-emerald-600" : "bg-[#f5f5f5] text-[#0a0a0a]"
+                        }`}>
                           <span className="material-symbols-outlined text-[18px]">
-                            {item.payment_method === "pix"
+                            {isIncome
+                              ? "arrow_downward"
+                              : item.payment_method === "pix"
                               ? "payments"
                               : item.payment_method === "credit_card"
                               ? "credit_card"
@@ -818,8 +1006,12 @@ export default function Home() {
                         </div>
                       </div>
                       <div className="text-right pl-2 shrink-0 flex flex-col items-end">
-                        <span className="text-[14px] font-semibold text-[#0a0a0a] font-mono">
-                          -R$ {Number(item.total_amount).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                        <span className={`text-[14px] font-semibold font-mono ${
+                          isIncome ? "text-emerald-600" : "text-[#0a0a0a]"
+                        }`}>
+                          {isValuesHidden
+                            ? (isIncome ? "+R$ ••••••" : "-R$ ••••••")
+                            : `${isIncome ? "+" : "-"}R$ ${valorTotalFinal.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                         </span>
                         {item.installmentTotal && (
                           <span className="inline-flex items-center gap-1 text-[10px] text-[#737373] bg-[#f5f5f5] px-1.5 py-0.5 rounded-[6px] font-mono mt-0.5">

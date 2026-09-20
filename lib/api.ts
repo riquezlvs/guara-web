@@ -115,6 +115,7 @@ export interface DashboardRecentItem {
   entry_type?: 'expense' | 'income' | 'yield' | 'transfer';
   installment_number?: number | null;
   installment_total?: number | null;
+  installment_group_id?: string | null;
   categories?: { name: string };
 }
 
