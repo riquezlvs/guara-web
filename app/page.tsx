@@ -47,6 +47,13 @@ function agruparAtividadesRecentes(items: DashboardRecentItem[]): RecentItemGrou
 export default function Home() {
   const [dashboardData, setDashboardData] = useState<DashboardResponse["data"] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isValuesHidden, setIsValuesHidden] = useState(false);
+
+  // Interactivity for Evolution Chart
+  const [selectedPointIndex, setSelectedPointIndex] = useState<number | null>(null);
+
+  // Interactivity for Donut Chart
+  const [selectedCategoryIndex, setSelectedCategoryIndex] = useState<number | null>(null);
 
   // Quick Prompt & Review Modal state
   const [quickInput, setQuickInput] = useState("");
@@ -56,6 +63,27 @@ export default function Home() {
 
   // Timeframe filter for Evolution chart
   const [activeRange, setActiveRange] = useState<"7D" | "30D" | "6M">("30D");
+
+  useEffect(() => {
+    try {
+      const storedVisibility = localStorage.getItem("guara:hide_values");
+      if (storedVisibility !== null) {
+        setIsValuesHidden(storedVisibility === "true");
+      }
+    } catch {
+      // fallback
+    }
+  }, []);
+
+  const toggleValuesVisibility = () => {
+    setIsValuesHidden((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("guara:hide_values", String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const carregarDashboard = useCallback(async () => {
     setIsLoading(true);

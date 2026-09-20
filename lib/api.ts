@@ -289,8 +289,11 @@ export interface ExtratoResponse {
 /**
  * Obtém o extrato completo com todas as transações, entradas e saídas reais do mês
  */
-export async function obterExtrato(mesAno?: string): Promise<ExtratoResponse> {
-  const query = mesAno ? `?mes=${mesAno}` : '';
+export async function obterExtrato(mesAno?: string, id?: string | number): Promise<ExtratoResponse> {
+  const params = new URLSearchParams();
+  if (mesAno) params.set('mes', mesAno);
+  if (id) params.set('id', String(id));
+  const query = params.toString() ? `?${params.toString()}` : '';
   const res = await fetch(`${API_BASE_URL}/api/extrato${query}`, {
     method: 'GET',
     headers: {

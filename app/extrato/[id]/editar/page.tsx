@@ -33,10 +33,16 @@ export default function EditarLancamentoPage() {
     async function loadTransaction() {
       setIsLoading(true);
       try {
-        const response = await obterExtrato();
-        const found = response.dados?.itens.find(
+        let response = await obterExtrato();
+        let found = response.dados?.itens.find(
           (item) => String(item.display_id) === params.id
         );
+
+        if (!found && params.id) {
+          const singleResp = await obterExtrato(undefined, params.id);
+          found = singleResp.dados?.itens?.find((item) => String(item.display_id) === params.id) || singleResp.dados?.itens?.[0];
+        }
+
         if (found && mounted) {
           setTransaction(found);
           setEntryType(found.entry_type === "income" ? "income" : "expense");
