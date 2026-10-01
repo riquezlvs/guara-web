@@ -33,6 +33,11 @@ export function ManualTransactionModal({
   const [installmentTotal, setInstallmentTotal] = useState<number>(1);
   const [observation, setObservation] = useState("");
 
+  // Campos de recorrência quando for Receita
+  const [isRecurring, setIsRecurring] = useState(false);
+  const [dayOfMonth, setDayOfMonth] = useState("5");
+  const [weekendRule, setWeekendRule] = useState<"anticipate" | "postpone">("anticipate");
+
   const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
   const [accounts, setAccounts] = useState<Array<{ id: string; name: string; type: string; balance: number }>>([]);
   const [cards, setCards] = useState<CartaoItem[]>([]);
@@ -149,6 +154,9 @@ export function ManualTransactionModal({
       accountBalance,
       occurredAt: occurredAt ? new Date(occurredAt).toISOString() : new Date().toISOString(),
       location: desc,
+      isRecurring: entryType === "income" ? isRecurring : false,
+      dayOfMonth: entryType === "income" && isRecurring ? parseInt(dayOfMonth, 10) || 5 : undefined,
+      weekendRule: entryType === "income" && isRecurring ? weekendRule : undefined,
       safeToSpend: {
         current: saldoAtual,
         projected: novoProjetado,
@@ -218,6 +226,62 @@ export function ManualTransactionModal({
             Receita
           </button>
         </div>
+
+        {/* Interruptor de Recebimento Recorrente (quando for Receita) */}
+        {entryType === "income" && (
+          <div className="flex flex-col gap-3 p-3.5 bg-[#f7f7f8] rounded-[20px] border border-black/5 animate-in fade-in duration-150">
+            <div className="flex items-center justify-between">
+              <div className="flex flex-col">
+                <span className="text-[13px] font-semibold text-[#0a0a0a]">Recebimento Recorrente?</span>
+                <span className="text-[11px] text-[#737373]">
+                  {isRecurring ? "Salário, aluguel ou benefício mensal" : "Receita avulsa / pontual"}
+                </span>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={isRecurring}
+                onClick={() => setIsRecurring(!isRecurring)}
+                className={`w-12 h-7 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${
+                  isRecurring ? "bg-[#0a0a0a]" : "bg-neutral-300"
+                }`}
+              >
+                <div
+                  className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-200 ${
+                    isRecurring ? "translate-x-5" : "translate-x-0"
+                  }`}
+                />
+              </button>
+            </div>
+
+            {isRecurring && (
+              <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-black/5 animate-in fade-in duration-150">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-medium text-[#737373]">Dia do Mês (1 a 31)</label>
+                  <input
+                    type="number"
+                    min="1"
+                    max="31"
+                    value={dayOfMonth}
+                    onChange={(e) => setDayOfMonth(e.target.value)}
+                    className="h-10 rounded-[14px] bg-white border border-black/10 text-[13px] text-[#0a0a0a] px-3 focus:outline-none focus:ring-1 focus:ring-black"
+                  />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-medium text-[#737373]">Fim de Semana</label>
+                  <select
+                    value={weekendRule}
+                    onChange={(e) => setWeekendRule(e.target.value as "anticipate" | "postpone")}
+                    className="h-10 rounded-[14px] bg-white border border-black/10 text-[13px] text-[#0a0a0a] px-2.5 focus:outline-none focus:ring-1 focus:ring-black"
+                  >
+                    <option value="anticipate">Antecipar (CLT)</option>
+                    <option value="postpone">Postergar</option>
+                  </select>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Valor em destaque */}
         <div className="flex flex-col gap-1.5 p-4 rounded-[22px] bg-[#fafafa] border border-black/[0.05]">

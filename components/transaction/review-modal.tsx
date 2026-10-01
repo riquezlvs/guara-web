@@ -246,6 +246,12 @@ export function ReviewModal({ draft: initialDraft, isOpen, onClose, onSuccess }:
                 <span className="material-symbols-outlined text-[13px] text-[#737373]">schedule</span>
                 {dataHoraFormatada}
               </span>
+              {draft.isRecurring && (
+                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-[18px] bg-emerald-50 text-emerald-800 text-[12px] font-medium shadow-[0_0_0_1px_rgba(5,150,105,0.2)]">
+                  <span className="material-symbols-outlined text-[13px] text-emerald-600">repeat</span>
+                  Renda Recorrente • Todo dia {draft.dayOfMonth || 5}
+                </span>
+              )}
             </div>
           </div>
 
@@ -338,6 +344,21 @@ export function ReviewModal({ draft: initialDraft, isOpen, onClose, onSuccess }:
                   <span className="text-[13px] text-[#0a0a0a] font-medium">{dataHoraFormatada}</span>
                 </div>
               </div>
+
+              {/* Recorrência se for receita recorrente */}
+              {draft.isRecurring && (
+                <div className="py-2.5 flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-emerald-600 text-[16px]">repeat</span>
+                    <span className="text-[13px] text-[#737373]">Recorrência</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-[18px] bg-emerald-50 text-emerald-800 text-[12px] font-medium">
+                      Mensal • Todo dia {draft.dayOfMonth || 5} {draft.weekendRule === 'postpone' ? '(Posterga)' : '(Antecipa CLT)'}
+                    </span>
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Impact Computation Banner (Clinical blueprint look) */}
@@ -421,6 +442,31 @@ export function ReviewModal({ draft: initialDraft, isOpen, onClose, onSuccess }:
                         </option>
                       ))}
                     </select>
+                  </div>
+                )}
+
+                {/* Se for Receita: Alternar Recorrência */}
+                {isIncome && (
+                  <div className="flex items-center justify-between p-2.5 rounded-[12px] bg-white border border-black/5">
+                    <div className="flex flex-col">
+                      <span className="text-[12px] font-semibold text-[#0a0a0a]">Recebimento Recorrente?</span>
+                      <span className="text-[10px] text-[#737373]">
+                        {draft.isRecurring ? `Cadastrado todo dia ${draft.dayOfMonth || 5}` : "Lançamento avulso / pontual"}
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setDraft((prev) => ({ ...prev, isRecurring: !prev.isRecurring }))}
+                      className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors cursor-pointer ${
+                        draft.isRecurring ? "bg-[#0a0a0a]" : "bg-neutral-300"
+                      }`}
+                    >
+                      <div
+                        className={`bg-white w-5 h-5 rounded-full shadow-sm transform transition-transform duration-200 ${
+                          draft.isRecurring ? "translate-x-5" : "translate-x-0"
+                        }`}
+                      />
+                    </button>
                   </div>
                 )}
 

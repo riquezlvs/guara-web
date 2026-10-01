@@ -14,7 +14,8 @@ interface IncomeModalProps {
 }
 
 export function IncomeModal({ isOpen, onClose, onSuccess }: IncomeModalProps) {
-  const [tab, setTab] = useState<"avulso" | "recorrente">("avulso");
+  // Interruptor de recorrência
+  const [isRecurring, setIsRecurring] = useState(false);
 
   // Campos compartilhados / avulso
   const [description, setDescription] = useState("");
@@ -83,54 +84,42 @@ export function IncomeModal({ isOpen, onClose, onSuccess }: IncomeModalProps) {
       return;
     }
 
+    if (isRecurring) {
+      const diaNum = parseInt(dayOfMonth, 10);
+      if (isNaN(diaNum) || diaNum < 1 || diaNum > 31) {
+        setErrorMessage("O dia do mês deve ser entre 1 e 31.");
+        return;
+      }
+    }
+
     setIsSubmitting(true);
 
     try {
-      if (tab === "avulso") {
-        const payload = {
-          description: description.trim(),
-          amount: valor,
-          accountId: accountId || undefined,
-          occurredAt: occurredDate ? new Date(`${occurredDate}T12:00:00Z`).toISOString() : undefined,
-          incomeType: incomeType === "third_party" ? "other" : incomeType,
-          paymentMethod,
-        };
+      const diaNum = isRecurring ? parseInt(dayOfMonth, 10) || 5 : undefined;
+      const payload = {
+        description: description.trim(),
+        amount: valor,
+        accountId: accountId || undefined,
+        occurredAt: isRecurring ? undefined : (occurredDate ? new Date(`${occurredDate}T12:00:00Z`).toISOString() : undefined),
+        incomeType: isRecurring ? recurringIncomeType : (incomeType === "third_party" ? "other" : incomeType),
+        paymentMethod,
+        isRecurring,
+        dayOfMonth: diaNum,
+        weekendRule: isRecurring ? weekendRule : undefined,
+      };
 
-        const resp = await cadastrarReceitaAvulsa(payload);
-        if (resp.sucesso) {
-          onSuccess(resp.mensagem || `Recebimento de R$ ${amountStr} cadastrado com sucesso!`);
-          window.dispatchEvent(new CustomEvent("finances:refresh"));
-          onClose();
-        } else {
-          setErrorMessage(resp.mensagem || "Erro ao salvar recebimento.");
-        }
+      const resp = await cadastrarReceitaAvulsa(payload);
+      if (resp.sucesso) {
+        onSuccess(
+          resp.mensagem ||
+            (isRecurring
+              ? `Renda recorrente "${description.trim()}" cadastrada no dia ${diaNum}!`
+              : `Recebimento de R$ ${amountStr} cadastrado com sucesso!`)
+        );
+        window.dispatchEvent(new CustomEvent("finances:refresh"));
+        onClose();
       } else {
-        const diaNum = parseInt(dayOfMonth, 10);
-        if (isNaN(diaNum) || diaNum < 1 || diaNum > 31) {
-          setErrorMessage("O dia do mês deve ser entre 1 e 31.");
-          setIsSubmitting(false);
-          return;
-        }
-
-        const payload = {
-          description: description.trim(),
-          total_amount: valor,
-          day_of_month: diaNum,
-          entry_type: "income" as const,
-          income_type: recurringIncomeType,
-          weekend_rule: weekendRule,
-          account_id: accountId || undefined,
-          payment_method: "pix",
-        };
-
-        const resp = await cadastrarRendaRecorrente(payload);
-        if (resp.sucesso) {
-          onSuccess(`Renda recorrente "${description.trim()}" cadastrada!`);
-          window.dispatchEvent(new CustomEvent("finances:refresh"));
-          onClose();
-        } else {
-          setErrorMessage(resp.mensagem || "Erro ao salvar renda recorrente.");
-        }
+        setErrorMessage(resp.mensagem || "Erro ao salvar recebimento.");
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro de conexão ao salvar.";
@@ -154,7 +143,7 @@ export function IncomeModal({ isOpen, onClose, onSuccess }: IncomeModalProps) {
                 Novo Recebimento / Ganho
               </h3>
               <span className="text-[12px] text-[#737373]">
-                {tab === "avulso" ? "Freelance, terceiro ou extra" : "Salário ou renda periódica"}
+                {isRecurring ? "Salário ou renda periódica mensal" : "Freelance, terceiro ou ganho avulso"}
               </span>
             </div>
           </div>
@@ -168,29 +157,28 @@ export function IncomeModal({ isOpen, onClose, onSuccess }: IncomeModalProps) {
           </button>
         </div>
 
-        {/* Tab Toggle: Avulso vs Recorrente */}
-        <div className="grid grid-cols-2 gap-1 bg-[#f5f5f5] p-1 rounded-2xl">
+        {/* Interruptor: Recebimento Recorrente */}
+        <div className="flex items-center justify-between p-3.5 bg-[#f7f7f8] rounded-2xl border border-black/5">
+          <div className="flex flex-col">
+            <span className="text-[13px] font-semibold text-[#0a0a0a]">Recebimento Recorrente?</span>
+            <span className="text-[11px] text-[#737373]">
+              {isRecurring ? "Salário, aluguel ou benefício mensal fixo" : "Ganho avulso, freelance ou extra pontual"}
+            </span>
+          </div>
           <button
             type="button"
-            onClick={() => setTab("avulso")}
-            className={`py-2 text-[13px] font-medium rounded-xl transition-all cursor-pointer ${
-              tab === "avulso"
-                ? "bg-white text-[#0a0a0a] shadow-xs font-semibold"
-                : "text-[#737373] hover:text-[#0a0a0a]"
+            role="switch"
+            aria-checked={isRecurring}
+            onClick={() => setIsRecurring(!isRecurring)}
+            className={`w-12 h-7 flex items-center rounded-full p-1 transition-colors duration-200 cursor-pointer ${
+              isRecurring ? "bg-[#0a0a0a]" : "bg-neutral-300"
             }`}
           >
-            Ganho Avulso / Freela
-          </button>
-          <button
-            type="button"
-            onClick={() => setTab("recorrente")}
-            className={`py-2 text-[13px] font-medium rounded-xl transition-all cursor-pointer ${
-              tab === "recorrente"
-                ? "bg-white text-[#0a0a0a] shadow-xs font-semibold"
-                : "text-[#737373] hover:text-[#0a0a0a]"
-            }`}
-          >
-            Renda Recorrente
+            <div
+              className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-200 ${
+                isRecurring ? "translate-x-5" : "translate-x-0"
+              }`}
+            />
           </button>
         </div>
 
@@ -220,14 +208,14 @@ export function IncomeModal({ isOpen, onClose, onSuccess }: IncomeModalProps) {
               />
             </div>
             <span className="text-[11px] text-[#737373]">
-              {tab === "avulso"
-                ? "Valor líquido a ser creditado na sua conta."
-                : "Valor que constará no fechamento de fatura para não ficar negativado."}
+              {isRecurring
+                ? "Valor mensal considerado nas previsões de fechamento e saldo livre."
+                : "Valor líquido creditado na sua conta."}
             </span>
           </div>
 
           {/* Tipo / Chips */}
-          {tab === "avulso" ? (
+          {!isRecurring ? (
             <div className="flex flex-col gap-1.5">
               <label className="text-[12px] text-[#737373] font-medium">Tipo de Ganho</label>
               <div className="flex gap-1.5 overflow-x-auto pb-1 no-scrollbar">
@@ -355,8 +343,8 @@ export function IncomeModal({ isOpen, onClose, onSuccess }: IncomeModalProps) {
             </select>
           </div>
 
-          {/* Campos específicos por aba */}
-          {tab === "avulso" ? (
+          {/* Campos específicos por recorrência */}
+          {!isRecurring ? (
             <div className="grid grid-cols-2 gap-3">
               <div className="flex flex-col gap-1">
                 <label className="text-[12px] text-[#737373] font-medium">Data do Recebimento</label>

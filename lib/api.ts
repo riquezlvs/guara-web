@@ -173,6 +173,10 @@ export interface TransactionDraft {
   accountBalance: number;
   occurredAt: string;
   location?: string | null;
+  isRecurring?: boolean;
+  dayOfMonth?: number;
+  incomeType?: 'salary' | 'freelance' | 'benefit' | 'other' | string;
+  weekendRule?: 'anticipate' | 'postpone' | 'exact' | string;
   safeToSpend: {
     current: number;
     projected: number;
@@ -276,8 +280,13 @@ export async function confirmarTransacao(
       categoryId: draft.categoryId,
       paymentMethod: draft.paymentMethod,
       accountName: draft.accountName,
+      accountId: draft.accountId,
       occurredAt: draft.occurredAt,
       rawInput: draft.originalInput,
+      isRecurring: draft.isRecurring,
+      dayOfMonth: draft.dayOfMonth,
+      incomeType: draft.incomeType,
+      weekendRule: draft.weekendRule,
     }),
   });
 
@@ -1031,6 +1040,9 @@ export interface ReceitaAvulsaInput {
   categoryId?: number;
   incomeType?: 'salary' | 'freelance' | 'benefit' | 'other';
   paymentMethod?: string;
+  isRecurring?: boolean;
+  dayOfMonth?: number;
+  weekendRule?: 'anticipate' | 'postpone' | 'exact';
 }
 
 /**
