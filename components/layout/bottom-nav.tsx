@@ -5,8 +5,15 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { enviarMensagemChat, interpretarTransacao, TransactionDraft, ChatResponse } from "@/lib/api";
+import {
+  enviarMensagemChat,
+  interpretarTransacao,
+  interpretarImagemTransacao,
+  TransactionDraft,
+  ChatResponse,
+} from "@/lib/api";
 import { ReviewModal } from "@/components/transaction/review-modal";
+import { ManualTransactionModal } from "@/components/transaction/manual-transaction-modal";
 
 export function BottomNav() {
   const pathname = usePathname();
@@ -19,6 +26,10 @@ export function BottomNav() {
   const [usedVoice, setUsedVoice] = useState(false);
   const [audioDurationSecs, setAudioDurationSecs] = useState(4);
   const [reviewDraft, setReviewDraft] = useState<TransactionDraft | null>(null);
+  const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
+  const [isManualModalOpen, setIsManualModalOpen] = useState(false);
+  const [isImageProcessing, setIsImageProcessing] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [popupData, setPopupData] = useState<{
     visible: boolean;
     sucesso: boolean;
@@ -175,6 +186,52 @@ export function BottomNav() {
     }
   };
 
+  const handleImageSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+    const file = files[0];
+
+    // Reseta o input para permitir selecionar o mesmo arquivo se quiser
+    e.target.value = "";
+
+    setIsSpeedDialOpen(false);
+    setIsImageProcessing(true);
+
+    try {
+      const reader = new FileReader();
+      const base64Promise = new Promise<string>((resolve, reject) => {
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = (err) => reject(err);
+      });
+      reader.readAsDataURL(file);
+      const base64String = await base64Promise;
+
+      const previewResp = await interpretarImagemTransacao(base64String, file.type || "image/jpeg");
+      if (previewResp.sucesso && previewResp.dados) {
+        setReviewDraft(previewResp.dados);
+      } else {
+        setPopupData({
+          visible: true,
+          sucesso: false,
+          mensagem: previewResp.mensagem || "Não foi possível extrair dados desta imagem.",
+        });
+      }
+    } catch (err: any) {
+      setPopupData({
+        visible: true,
+        sucesso: false,
+        mensagem: err.message || "Erro ao processar imagem do extrato.",
+      });
+    } finally {
+      setIsImageProcessing(false);
+    }
+  };
+
+  const handleManualSubmit = (draft: TransactionDraft) => {
+    setIsManualModalOpen(false);
+    setReviewDraft(draft);
+  };
+
   const navItems = [
     { label: "Início", href: "/", icon: "account_balance_wallet" },
     { label: "Extrato", href: "/extrato", icon: "receipt_long" },
@@ -199,6 +256,50 @@ export function BottomNav() {
             window.dispatchEvent(new CustomEvent("finances:refresh"));
             router.refresh();
           }}
+        />
+      )}
+
+      {/* Modal de Lançamento Manual Completo */}
+      {isManualModalOpen && (
+        <ManualTransactionModal
+          isOpen={isManualModalOpen}
+          onClose={() => setIsManualModalOpen(false)}
+          onSubmit={handleManualSubmit}
+        />
+      )}
+
+      {/* Input de Arquivo Oculto para Imagens de Extratos / Comprovantes */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        capture="environment"
+        className="hidden"
+        onChange={handleImageSelect}
+      />
+
+      {/* Overlay de Análise de Imagem por IA */}
+      {isImageProcessing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-xs bg-white rounded-[26px] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-black/5 flex flex-col items-center text-center gap-3 animate-in zoom-in-95 duration-200">
+            <div className="w-12 h-12 rounded-[22px] bg-black text-white flex items-center justify-center shadow-md">
+              <span className="material-symbols-outlined text-[24px] animate-spin">progress_activity</span>
+            </div>
+            <div className="flex flex-col gap-1">
+              <h4 className="text-[16px] font-semibold text-[#0a0a0a]">Analisando com IA...</h4>
+              <p className="text-[12px] text-[#737373] leading-relaxed">
+                Identificando valores e dados do extrato/comprovante para revisão.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Backdrop suave para fechar o Speed Dial ao clicar fora */}
+      {isSpeedDialOpen && (
+        <div
+          onClick={() => setIsSpeedDialOpen(false)}
+          className="fixed inset-0 z-30 bg-black/20 backdrop-blur-xs animate-in fade-in duration-200"
         />
       )}
 
@@ -293,48 +394,100 @@ export function BottomNav() {
       {!pathname.includes("/editar") && !pathname.includes("/dividir") && !pathname.includes("/novo") && (
         <div className="fixed bottom-0 w-full z-40 pb-safe pointer-events-none">
           <div className="px-4 pb-5 flex flex-col gap-2 w-full max-w-md mx-auto">
-            {/* Campo de comando rápido com IA */}
-            <div className="pointer-events-auto bg-white/95 backdrop-blur-xl p-1.5 pl-3 rounded-[20px] border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2">
-              {/* Botão de Áudio / Microfone */}
-              <button
-              type="button"
-              onClick={toggleListening}
-              title={isListening ? "Parar de ouvir" : "Falar despesa por áudio"}
-              className={`w-8 h-8 rounded-[16px] flex items-center justify-center transition-all ${
-                isListening
-                  ? "bg-rose-500 text-white animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.5)]"
-                  : "text-[#737373] hover:text-[#0a0a0a] hover:bg-[#f5f5f5]"
-              }`}
-            >
-              <span className="material-symbols-outlined text-[20px]">
-                {isListening ? "mic" : "mic"}
-              </span>
-            </button>
+            {/* Linha com Input Suspenso + Botão (+) com Speed Dial */}
+            <div className="relative flex items-center gap-2 w-full">
+              {/* Menu Flutuante Speed Dial (animado subindo) */}
+              {isSpeedDialOpen && (
+                <div className="absolute bottom-14 right-0 flex flex-col items-end gap-2.5 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200 pointer-events-auto max-w-[calc(100vw-32px)]">
+                  {/* Botão 1: Por Imagem */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSpeedDialOpen(false);
+                      fileInputRef.current?.click();
+                    }}
+                    className="flex items-center gap-2.5 px-4 py-2.5 rounded-[20px] bg-white text-[#0a0a0a] shadow-[0_8px_28px_rgba(0,0,0,0.15)] border border-black/5 hover:bg-[#fafafa] active:scale-95 transition-all group cursor-pointer"
+                  >
+                    <span className="text-[13px] font-medium tracking-tight whitespace-nowrap">Por Imagem (Extrato / Comprovante)</span>
+                    <div className="w-8 h-8 rounded-[12px] bg-[#f5f5f5] text-[#0a0a0a] group-hover:bg-black group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                      <span className="material-symbols-outlined text-[18px]">photo_camera</span>
+                    </div>
+                  </button>
 
-            {/* Input de Texto */}
-            <Input
-              className="flex-1 bg-transparent border-0 shadow-none text-[#0a0a0a] placeholder-[#737373] text-[13px] h-8 p-0 focus-visible:ring-0"
-              placeholder={inputPlaceholder}
-              type="text"
-              value={quickInput}
-              onChange={(e) => setQuickInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handleQuickSubmit();
-              }}
-            />
+                  {/* Botão 2: Manual */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSpeedDialOpen(false);
+                      setIsManualModalOpen(true);
+                    }}
+                    className="flex items-center gap-2.5 px-4 py-2.5 rounded-[20px] bg-white text-[#0a0a0a] shadow-[0_8px_28px_rgba(0,0,0,0.15)] border border-black/5 hover:bg-[#fafafa] active:scale-95 transition-all group cursor-pointer"
+                  >
+                    <span className="text-[13px] font-medium tracking-tight whitespace-nowrap">Adicionar Manualmente</span>
+                    <div className="w-8 h-8 rounded-[12px] bg-[#f5f5f5] text-[#0a0a0a] group-hover:bg-black group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                      <span className="material-symbols-outlined text-[18px]">edit_note</span>
+                    </div>
+                  </button>
+                </div>
+              )}
 
-            {/* Botão de Envio para IA */}
-            <Button
-              size="icon"
-              onClick={() => handleQuickSubmit()}
-              disabled={isSubmitting || (!quickInput.trim() && !isListening)}
-              className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-[18px] bg-black text-white hover:bg-neutral-800 active:scale-95 transition-all disabled:opacity-40"
-            >
-              <span className={`material-symbols-outlined text-[18px] ${isSubmitting ? "animate-spin" : ""}`}>
-                {isSubmitting ? "progress_activity" : "arrow_upward"}
-              </span>
-            </Button>
-          </div>
+              {/* Campo de comando rápido com IA com min-w-0 para caber no mobile */}
+              <div className="flex-1 min-w-0 pointer-events-auto bg-white/95 backdrop-blur-xl p-1.5 pl-3 rounded-[20px] border border-black/5 shadow-[0_4px_20px_rgba(0,0,0,0.08)] flex items-center gap-2">
+                {/* Botão de Áudio / Microfone */}
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  title={isListening ? "Parar de ouvir" : "Falar despesa por áudio"}
+                  className={`w-8 h-8 min-w-[32px] rounded-[16px] flex items-center justify-center transition-all shrink-0 ${
+                    isListening
+                      ? "bg-rose-500 text-white animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.5)]"
+                      : "text-[#737373] hover:text-[#0a0a0a] hover:bg-[#f5f5f5]"
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[20px]">
+                    {isListening ? "mic" : "mic"}
+                  </span>
+                </button>
+
+                {/* Input de Texto com min-w-0 e truncate */}
+                <Input
+                  className="flex-1 min-w-0 w-full bg-transparent border-0 shadow-none text-[#0a0a0a] placeholder-[#737373] text-[13px] h-8 p-0 focus-visible:ring-0 truncate"
+                  placeholder={inputPlaceholder}
+                  type="text"
+                  value={quickInput}
+                  onChange={(e) => setQuickInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") handleQuickSubmit();
+                  }}
+                />
+
+                {/* Botão de Envio para IA */}
+                <Button
+                  size="icon"
+                  onClick={() => handleQuickSubmit()}
+                  disabled={isSubmitting || (!quickInput.trim() && !isListening)}
+                  className="w-9 h-9 min-w-[36px] min-h-[36px] rounded-[18px] bg-black text-white hover:bg-neutral-800 active:scale-95 transition-all disabled:opacity-40 shrink-0"
+                >
+                  <span className={`material-symbols-outlined text-[18px] ${isSubmitting ? "animate-spin" : ""}`}>
+                    {isSubmitting ? "progress_activity" : "arrow_upward"}
+                  </span>
+                </Button>
+              </div>
+
+              {/* Botão Principal (+) garantido com shrink-0 e min-w-[44px] */}
+              <div className="pointer-events-auto shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setIsSpeedDialOpen(!isSpeedDialOpen)}
+                  title={isSpeedDialOpen ? "Fechar opções" : "Novo lançamento"}
+                  className={`w-11 h-11 min-w-[44px] min-h-[44px] rounded-[20px] bg-black text-white flex items-center justify-center shadow-[0_4px_20px_rgba(0,0,0,0.15)] hover:bg-neutral-800 active:scale-95 transition-all duration-300 cursor-pointer ${
+                    isSpeedDialOpen ? "rotate-45 bg-neutral-900" : ""
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[24px]">add</span>
+                </button>
+              </div>
+            </div>
 
           {/* Menu de Abas */}
           <nav className="pointer-events-auto bg-white/95 backdrop-blur-xl px-2 py-1.5 rounded-[24px] border border-black/5 shadow-[0_4px_24px_rgba(0,0,0,0.07)] flex items-center justify-between">
