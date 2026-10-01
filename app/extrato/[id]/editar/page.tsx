@@ -81,9 +81,10 @@ export default function EditarLancamentoPage() {
           setAvailableAccounts(accountsRes.dados);
         }
 
-        let found = extratoRes.dados?.itens?.find(
-          (item) => String(item.display_id) === params.id || (item as any).id === params.id
-        ) || extratoRes.dados?.itens?.[0];
+        const item = extratoRes.dados?.itens?.find(
+          (it) => String(it.display_id) === params.id || (it as any).id === params.id
+        );
+        let found = item || (extratoRes.dados?.totalLancamentos === 1 ? extratoRes.dados?.itens?.[0] : undefined);
 
         if (found && mounted) {
           setTransaction(found);

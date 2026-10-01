@@ -49,14 +49,17 @@ export default function TransactionDetailsPage() {
         // 1. Tenta buscar direto por ID específico
         if (params.id) {
           const singleResp = await obterExtrato(undefined, params.id);
-          found = singleResp.dados?.itens?.find((item) => String(item.display_id) === params.id) || singleResp.dados?.itens?.[0];
+          const item = singleResp.dados?.itens?.find(
+            (it) => String(it.display_id) === params.id || String((it as any).id) === params.id,
+          );
+          found = item || (singleResp.dados?.totalLancamentos === 1 ? singleResp.dados?.itens?.[0] : undefined);
         }
 
         // 2. Se não encontrar, tenta pelo extrato geral do mês
         if (!found) {
           const response = await obterExtrato();
-          found = response.dados?.itens.find(
-            (item) => String(item.display_id) === params.id,
+          found = response.dados?.itens?.find(
+            (item) => String(item.display_id) === params.id || String((item as any).id) === params.id,
           );
         }
 
