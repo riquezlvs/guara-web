@@ -18,10 +18,11 @@ export default function NovaRendaRecorrentePage() {
 
   // Dia Agendado (pode ser preset ou dia numérico 1-31)
   const [scheduledDay, setScheduledDay] = useState<string>("5");
-  const [customDay, setCustomDay] = useState<string>("5");
+  const [customDay, setCustomDay] = useState<string>("");
   const [isCustomDay, setIsCustomDay] = useState<boolean>(false);
 
   // Regra de Fim de Semana (CLT)
+  const [applyWeekendRule, setApplyWeekendRule] = useState<boolean>(true);
   const [weekendRule, setWeekendRule] = useState<"anticipate" | "postpone">("anticipate");
 
   // Considerar no Guará IA
@@ -74,6 +75,10 @@ export default function NovaRendaRecorrentePage() {
 
     let dia = 5;
     if (isCustomDay) {
+      if (!customDay.trim()) {
+        setErroMsg("Informe o dia do mês desejado (entre 1 e 31).");
+        return;
+      }
       const parsed = parseInt(customDay, 10);
       if (isNaN(parsed) || parsed < 1 || parsed > 31) {
         setErroMsg("O dia customizado deve ser entre 1 e 31.");
@@ -106,6 +111,8 @@ export default function NovaRendaRecorrentePage() {
         ? "salary"
         : "other";
 
+    const finalWeekendRule = applyWeekendRule ? weekendRule : "exact";
+
     setIsSubmitting(true);
     setErroMsg(null);
 
@@ -116,7 +123,7 @@ export default function NovaRendaRecorrentePage() {
         day_of_month: dia,
         entry_type: "income",
         income_type: incomeType as "salary" | "freelance" | "benefit" | "other",
-        weekend_rule: weekendRule,
+        weekend_rule: finalWeekendRule,
         account_id: selectedAccountId || undefined,
         payment_method: selectedType === "vr" || selectedType === "va" ? "meal_voucher" : "pix",
       });
@@ -331,7 +338,10 @@ export default function NovaRendaRecorrentePage() {
                 </button>
 
                 <button
-                  onClick={() => setIsCustomDay(true)}
+                  onClick={() => {
+                    setIsCustomDay(true);
+                    setCustomDay("");
+                  }}
                   className={`col-span-2 flex items-center justify-between px-3.5 py-2.5 rounded-[16px] transition-all cursor-pointer border ${
                     isCustomDay
                       ? "bg-black text-white border-black"
@@ -348,75 +358,109 @@ export default function NovaRendaRecorrentePage() {
 
               {isCustomDay && (
                 <div className="flex items-center gap-2 pt-2 animate-in fade-in duration-150">
-                  <span className="text-[13px] text-[#737373]">Dia exato do mês:</span>
+                  <span className="text-[13px] text-[#737373]">Dia do mês (1 a 31):</span>
                   <input
                     type="number"
                     min="1"
                     max="31"
+                    autoFocus
+                    placeholder="DD"
                     value={customDay}
                     onChange={(e) => setCustomDay(e.target.value)}
-                    className="w-20 h-10 rounded-[12px] bg-[#f9f9f9] border border-black/10 text-[14px] font-semibold text-center text-[#0a0a0a] focus:outline-none focus:ring-1 focus:ring-black"
+                    className="w-16 h-10 rounded-[12px] bg-[#f0f0f0] border border-black/15 text-[14px] font-semibold text-center text-[#0a0a0a] placeholder:text-[#a3a3a3] focus:bg-white focus:outline-none focus:ring-1 focus:ring-black transition-all"
                   />
                 </div>
               )}
             </div>
 
-            {/* Regra de Fim de Semana */}
+            {/* Interruptor se aplica ou não regra de fim de semana */}
             <div className="flex flex-col gap-2 pt-1 border-t border-black/[0.06]">
-              <span className="text-[11px] uppercase tracking-wider font-semibold text-[#737373]">
-                Se cair em sábado, domingo ou feriado:
-              </span>
-              <div className="flex flex-col gap-2">
-                <label
-                  onClick={() => setWeekendRule("anticipate")}
-                  className={`flex items-center gap-3 p-3 rounded-[16px] cursor-pointer transition-colors border ${
-                    weekendRule === "anticipate"
-                      ? "bg-[#fafafa] border-black/20"
-                      : "bg-[#f9f9f9] border-black/[0.04] hover:bg-[#f0f0f0]"
+              <div className="flex items-center justify-between p-3.5 bg-[#f9f9f9] rounded-[18px] border border-black/[0.06]">
+                <div className="flex flex-col">
+                  <span className="text-[13px] font-medium text-[#0a0a0a]">
+                    Ajustar em fim de semana / feriado?
+                  </span>
+                  <span className="text-[11px] text-[#737373]">
+                    {applyWeekendRule
+                      ? "Desloca o crédito para um dia útil bancário"
+                      : "Manter exatamente no dia fixado (sem ajuste)"}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={applyWeekendRule}
+                  onClick={() => setApplyWeekendRule(!applyWeekendRule)}
+                  className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors duration-200 cursor-pointer ${
+                    applyWeekendRule ? "bg-black" : "bg-neutral-300"
                   }`}
                 >
-                  <input
-                    checked={weekendRule === "anticipate"}
-                    onChange={() => setWeekendRule("anticipate")}
-                    className="w-4 h-4 accent-black cursor-pointer"
-                    name="weekend-rule"
-                    type="radio"
+                  <div
+                    className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-200 ${
+                      applyWeekendRule ? "translate-x-5" : "translate-x-0"
+                    }`}
                   />
-                  <div className="flex flex-col">
-                    <span className="text-[13px] text-[#0a0a0a] font-medium">
-                      Antecipar para o dia útil anterior
-                    </span>
-                    <span className="text-[11px] text-[#737373]">
-                      Padrão contábil CLT / Folha de pagamento bancária
-                    </span>
-                  </div>
-                </label>
-
-                <label
-                  onClick={() => setWeekendRule("postpone")}
-                  className={`flex items-center gap-3 p-3 rounded-[16px] cursor-pointer transition-colors border ${
-                    weekendRule === "postpone"
-                      ? "bg-[#fafafa] border-black/20"
-                      : "bg-[#f9f9f9] border-black/[0.04] hover:bg-[#f0f0f0]"
-                  }`}
-                >
-                  <input
-                    checked={weekendRule === "postpone"}
-                    onChange={() => setWeekendRule("postpone")}
-                    className="w-4 h-4 accent-black cursor-pointer"
-                    name="weekend-rule"
-                    type="radio"
-                  />
-                  <div className="flex flex-col">
-                    <span className="text-[13px] text-[#0a0a0a] font-medium">
-                      Postergar para o próximo dia útil
-                    </span>
-                    <span className="text-[11px] text-[#737373]">
-                      Para contratos específicos ou repasses com carência
-                    </span>
-                  </div>
-                </label>
+                </button>
               </div>
+
+              {applyWeekendRule && (
+                <div className="flex flex-col gap-2 pt-1 animate-in fade-in duration-150">
+                  <span className="text-[11px] uppercase tracking-wider font-semibold text-[#737373]">
+                    Como ajustar se cair em sábado, domingo ou feriado:
+                  </span>
+                  <div className="flex flex-col gap-2">
+                    <label
+                      onClick={() => setWeekendRule("anticipate")}
+                      className={`flex items-center gap-3 p-3 rounded-[16px] cursor-pointer transition-colors border ${
+                        weekendRule === "anticipate"
+                          ? "bg-[#fafafa] border-black/20"
+                          : "bg-[#f9f9f9] border-black/[0.04] hover:bg-[#f0f0f0]"
+                      }`}
+                    >
+                      <input
+                        checked={weekendRule === "anticipate"}
+                        onChange={() => setWeekendRule("anticipate")}
+                        className="w-4 h-4 accent-black cursor-pointer"
+                        name="weekend-rule"
+                        type="radio"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-[13px] text-[#0a0a0a] font-medium">
+                          Antecipar para o dia útil anterior
+                        </span>
+                        <span className="text-[11px] text-[#737373]">
+                          Padrão contábil CLT / Folha de pagamento bancária
+                        </span>
+                      </div>
+                    </label>
+
+                    <label
+                      onClick={() => setWeekendRule("postpone")}
+                      className={`flex items-center gap-3 p-3 rounded-[16px] cursor-pointer transition-colors border ${
+                        weekendRule === "postpone"
+                          ? "bg-[#fafafa] border-black/20"
+                          : "bg-[#f9f9f9] border-black/[0.04] hover:bg-[#f0f0f0]"
+                      }`}
+                    >
+                      <input
+                        checked={weekendRule === "postpone"}
+                        onChange={() => setWeekendRule("postpone")}
+                        className="w-4 h-4 accent-black cursor-pointer"
+                        name="weekend-rule"
+                        type="radio"
+                      />
+                      <div className="flex flex-col">
+                        <span className="text-[13px] text-[#0a0a0a] font-medium">
+                          Postergar para o próximo dia útil
+                        </span>
+                        <span className="text-[11px] text-[#737373]">
+                          Para contratos específicos ou repasses com carência
+                        </span>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
 

@@ -52,7 +52,8 @@ export function ManualTransactionModal({
   // Recorrência
   const [isRecurring, setIsRecurring] = useState(false);
   const [dayOption, setDayOption] = useState<"5" | "20" | "last-day" | "5th-business" | "custom">("5");
-  const [customDay, setCustomDay] = useState<string>("5");
+  const [customDay, setCustomDay] = useState<string>("");
+  const [applyWeekendRule, setApplyWeekendRule] = useState<boolean>(true);
   const [weekendRule, setWeekendRule] = useState<"anticipate" | "postpone">("anticipate");
   const [incomeType, setIncomeType] = useState<"salary" | "freelance" | "benefit" | "other">("salary");
 
@@ -172,6 +173,10 @@ export function ManualTransactionModal({
       else if (dayOption === "last-day") diaNum = 28;
       else if (dayOption === "5th-business") diaNum = 7;
       else if (dayOption === "custom") {
+        if (!customDay.trim()) {
+          alert("Por favor, digite o dia do mês desejado (entre 1 e 31).");
+          return;
+        }
         const parsed = parseInt(customDay, 10);
         if (isNaN(parsed) || parsed < 1 || parsed > 31) {
           alert("Por favor, informe um dia do mês válido (entre 1 e 31) para a recorrência.");
@@ -180,6 +185,8 @@ export function ManualTransactionModal({
         diaNum = parsed;
       }
     }
+
+    const weekendRuleFinal = applyWeekendRule ? weekendRule : "exact";
 
     // Resolução de Categoria:
     // Para despesas: categoria selecionada pelo usuário
@@ -242,7 +249,7 @@ export function ManualTransactionModal({
       location: desc,
       isRecurring,
       dayOfMonth: isRecurring ? diaNum : undefined,
-      weekendRule: isRecurring ? weekendRule : undefined,
+      weekendRule: isRecurring ? weekendRuleFinal : undefined,
       incomeType: isIncome ? incomeType : undefined,
       safeToSpend: {
         current: saldoAtual,
@@ -432,7 +439,10 @@ export function ManualTransactionModal({
                   </button>
                   <button
                     type="button"
-                    onClick={() => setDayOption("custom")}
+                    onClick={() => {
+                      setDayOption("custom");
+                      setCustomDay("");
+                    }}
                     className={`py-2 px-2.5 rounded-[14px] text-[12px] font-medium transition-all text-center border cursor-pointer ${
                       dayOption === "custom"
                         ? "bg-black text-white border-black shadow-xs font-semibold"
@@ -444,30 +454,65 @@ export function ManualTransactionModal({
                 </div>
 
                 {dayOption === "custom" && (
-                  <div className="flex items-center gap-2 pt-1 animate-in fade-in duration-150">
+                  <div className="flex items-center gap-2 pt-1.5 animate-in fade-in duration-150">
                     <span className="text-[12px] text-[#737373]">Dia do mês (1 a 31):</span>
                     <input
                       type="number"
                       min="1"
                       max="31"
+                      autoFocus
+                      placeholder="DD"
                       value={customDay}
                       onChange={(e) => setCustomDay(e.target.value)}
-                      className="w-20 h-9 rounded-[12px] bg-white border border-black/15 text-[14px] font-semibold text-center text-[#0a0a0a] focus:outline-none focus:ring-1 focus:ring-black"
+                      className="w-16 h-9 rounded-[12px] bg-[#f5f5f5] border border-black/15 text-[14px] font-semibold text-center text-[#0a0a0a] placeholder:text-[#a3a3a3] focus:bg-white focus:outline-none focus:ring-1 focus:ring-black transition-all"
                     />
                   </div>
                 )}
               </div>
 
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-[#737373]">Regra de Fim de Semana</label>
-                <select
-                  value={weekendRule}
-                  onChange={(e) => setWeekendRule(e.target.value as "anticipate" | "postpone")}
-                  className="h-10 rounded-[14px] bg-white border border-black/10 text-[13px] text-[#0a0a0a] px-2.5 focus:outline-none focus:ring-1 focus:ring-black"
-                >
-                  <option value="anticipate">Antecipar para o dia útil anterior (CLT)</option>
-                  <option value="postpone">Postergar para o próximo dia útil</option>
-                </select>
+              {/* Interruptor se aplica ou não regra de fim de semana */}
+              <div className="flex flex-col gap-2 pt-1">
+                <div className="flex items-center justify-between p-3 bg-white rounded-[16px] border border-black/[0.06] shadow-2xs">
+                  <div className="flex flex-col">
+                    <span className="text-[13px] font-medium text-[#0a0a0a]">
+                      Ajustar em fim de semana / feriado?
+                    </span>
+                    <span className="text-[11px] text-[#737373]">
+                      {applyWeekendRule
+                        ? "Desloca o crédito para um dia útil bancário"
+                        : "Manter exatamente no dia fixado (sem ajuste)"}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={applyWeekendRule}
+                    onClick={() => setApplyWeekendRule(!applyWeekendRule)}
+                    className={`w-11 h-6 flex items-center rounded-full p-0.5 transition-colors duration-200 cursor-pointer ${
+                      applyWeekendRule ? "bg-[#0a0a0a]" : "bg-neutral-300"
+                    }`}
+                  >
+                    <div
+                      className={`bg-white w-5 h-5 rounded-full shadow-md transform transition-transform duration-200 ${
+                        applyWeekendRule ? "translate-x-5" : "translate-x-0"
+                      }`}
+                    />
+                  </button>
+                </div>
+
+                {applyWeekendRule && (
+                  <div className="flex flex-col gap-1 pt-1 animate-in fade-in duration-150">
+                    <label className="text-[11px] font-medium text-[#737373]">Como ajustar:</label>
+                    <select
+                      value={weekendRule}
+                      onChange={(e) => setWeekendRule(e.target.value as "anticipate" | "postpone")}
+                      className="h-10 rounded-[14px] bg-white border border-black/10 text-[13px] text-[#0a0a0a] px-2.5 focus:outline-none focus:ring-1 focus:ring-black"
+                    >
+                      <option value="anticipate">Antecipar para o dia útil anterior (Padrão CLT)</option>
+                      <option value="postpone">Postergar para o próximo dia útil</option>
+                    </select>
+                  </div>
+                )}
               </div>
             </div>
           )}
