@@ -168,6 +168,8 @@ export interface TransactionDraft {
   paymentMethod: string;
   paymentMethodLabel: string;
   cardName?: string | null;
+  cardId?: string | null;
+  installmentTotal?: number | null;
   accountName: string;
   accountId?: string | null;
   accountBalance: number;
@@ -279,6 +281,9 @@ export async function confirmarTransacao(
       totalAmount: draft.totalAmount,
       categoryId: draft.categoryId,
       paymentMethod: draft.paymentMethod,
+      cardId: draft.cardId,
+      cardName: draft.cardName,
+      installmentTotal: draft.installmentTotal,
       accountName: draft.accountName,
       accountId: draft.accountId,
       occurredAt: draft.occurredAt,

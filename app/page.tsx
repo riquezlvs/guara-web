@@ -4,7 +4,6 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { obterDashboard, DashboardResponse, DashboardRecentItem, interpretarTransacao, TransactionDraft, adicionarAporteInvestimento, resgatarValorInvestimento } from "@/lib/api";
 import { ReviewModal } from "@/components/transaction/review-modal";
-import { IncomeModal } from "@/components/transaction/income-modal";
 
 type RecentItemGroup = DashboardRecentItem & {
   installmentNumber?: number;
@@ -67,7 +66,6 @@ export default function Home() {
   // Aporte & Resgate Modal States
   const [modalAporteAberto, setModalAporteAberto] = useState(false);
   const [modalResgateAberto, setModalResgateAberto] = useState(false);
-  const [modalReceitaAberto, setModalReceitaAberto] = useState(false);
   const [metaSelecionadaAporte, setMetaSelecionadaAporte] = useState<{
     id: string;
     nome: string;
@@ -515,25 +513,6 @@ export default function Home() {
               </span>
             )}
           </div>
-
-          {/* Ações Rápidas: + Recebimento / + Renda */}
-          <div className="flex items-center gap-2 pt-1">
-            <button
-              type="button"
-              onClick={() => setModalReceitaAberto(true)}
-              className="flex-1 py-2 px-3 rounded-[16px] bg-[#0a0a0a] text-white text-[12px] font-medium hover:bg-neutral-800 active:scale-98 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
-            >
-              <span className="material-symbols-outlined text-[16px]">add_circle</span>
-              <span>+ Recebimento (Freela / Salário)</span>
-            </button>
-            <Link
-              href="/renda-recorrente/novo"
-              className="py-2 px-3 rounded-[16px] bg-[#f5f5f5] text-[#0a0a0a] border border-black/5 text-[12px] font-medium hover:bg-neutral-200 active:scale-98 transition-all flex items-center justify-center gap-1 cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[16px]">event_repeat</span>
-              <span>Renda Fixa</span>
-            </Link>
-          </div>
         </section>
 
         {/* 2. Natural Language Quick Entry Card */}
@@ -569,14 +548,6 @@ export default function Home() {
 
           {/* Quick Suggestion Chips */}
           <div className="flex gap-1.5 overflow-x-auto px-1 pb-0.5 no-scrollbar">
-            <button
-              type="button"
-              onClick={() => setModalReceitaAberto(true)}
-              className="px-2.5 py-1 rounded-[12px] bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 hover:bg-emerald-100 active:scale-95 transition-all font-medium shrink-0 cursor-pointer flex items-center gap-1"
-            >
-              <span className="material-symbols-outlined text-[13px]">payments</span>
-              + Freelance / Ganho
-            </button>
             <button
               type="button"
               onClick={() => handleTriggerQuickEntry("Almoço 38")}
@@ -1471,16 +1442,6 @@ export default function Home() {
         />
       )}
 
-      {/* Income Modal for Freelance, Third-party & Recurring Incomes */}
-      <IncomeModal
-        isOpen={modalReceitaAberto}
-        onClose={() => setModalReceitaAberto(false)}
-        onSuccess={(msg) => {
-          setFeedbackToast(msg);
-          setTimeout(() => setFeedbackToast(null), 4000);
-          carregarDashboard();
-        }}
-      />
     </main>
   );
 }

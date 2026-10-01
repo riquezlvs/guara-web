@@ -29,7 +29,8 @@ export function BottomNav() {
   const [isSpeedDialOpen, setIsSpeedDialOpen] = useState(false);
   const [isManualModalOpen, setIsManualModalOpen] = useState(false);
   const [isImageProcessing, setIsImageProcessing] = useState(false);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const galleryInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const [popupData, setPopupData] = useState<{
     visible: boolean;
     sucesso: boolean;
@@ -268,9 +269,18 @@ export function BottomNav() {
         />
       )}
 
-      {/* Input de Arquivo Oculto para Imagens de Extratos / Comprovantes */}
+      {/* Input de Arquivo Oculto para Galeria de Fotos / Imagens */}
       <input
-        ref={fileInputRef}
+        ref={galleryInputRef}
+        type="file"
+        accept="image/*"
+        className="hidden"
+        onChange={handleImageSelect}
+      />
+
+      {/* Input de Arquivo Oculto para Câmera Direta */}
+      <input
+        ref={cameraInputRef}
         type="file"
         accept="image/*"
         capture="environment"
@@ -398,23 +408,38 @@ export function BottomNav() {
             <div className="relative flex items-center gap-2 w-full">
               {/* Menu Flutuante Speed Dial (animado subindo) */}
               {isSpeedDialOpen && (
-                <div className="absolute bottom-14 right-0 flex flex-col items-end gap-2.5 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200 pointer-events-auto max-w-[calc(100vw-32px)]">
-                  {/* Botão 1: Por Imagem */}
+                <div className="absolute bottom-14 right-0 flex flex-col items-end gap-2 z-50 animate-in slide-in-from-bottom-4 fade-in duration-200 pointer-events-auto max-w-[calc(100vw-32px)]">
+                  {/* Botão 1: Escolher da Galeria */}
                   <button
                     type="button"
                     onClick={() => {
                       setIsSpeedDialOpen(false);
-                      fileInputRef.current?.click();
+                      galleryInputRef.current?.click();
                     }}
                     className="flex items-center gap-2.5 px-4 py-2.5 rounded-[20px] bg-white text-[#0a0a0a] shadow-[0_8px_28px_rgba(0,0,0,0.15)] border border-black/5 hover:bg-[#fafafa] active:scale-95 transition-all group cursor-pointer"
                   >
-                    <span className="text-[13px] font-medium tracking-tight whitespace-nowrap">Por Imagem (Extrato / Comprovante)</span>
+                    <span className="text-[13px] font-medium tracking-tight whitespace-nowrap">Escolher da Galeria</span>
+                    <div className="w-8 h-8 rounded-[12px] bg-[#f5f5f5] text-[#0a0a0a] group-hover:bg-black group-hover:text-white flex items-center justify-center transition-colors shrink-0">
+                      <span className="material-symbols-outlined text-[18px]">photo_library</span>
+                    </div>
+                  </button>
+
+                  {/* Botão 2: Tirar Foto com a Câmera */}
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setIsSpeedDialOpen(false);
+                      cameraInputRef.current?.click();
+                    }}
+                    className="flex items-center gap-2.5 px-4 py-2.5 rounded-[20px] bg-white text-[#0a0a0a] shadow-[0_8px_28px_rgba(0,0,0,0.15)] border border-black/5 hover:bg-[#fafafa] active:scale-95 transition-all group cursor-pointer"
+                  >
+                    <span className="text-[13px] font-medium tracking-tight whitespace-nowrap">Tirar Foto do Extrato</span>
                     <div className="w-8 h-8 rounded-[12px] bg-[#f5f5f5] text-[#0a0a0a] group-hover:bg-black group-hover:text-white flex items-center justify-center transition-colors shrink-0">
                       <span className="material-symbols-outlined text-[18px]">photo_camera</span>
                     </div>
                   </button>
 
-                  {/* Botão 2: Manual */}
+                  {/* Botão 3: Adicionar Manualmente */}
                   <button
                     type="button"
                     onClick={() => {
