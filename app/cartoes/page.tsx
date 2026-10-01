@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { obterCartoes, excluirCartao, CartaoItem } from "@/lib/api";
+import { obterCartoes, excluirCartao, CartaoItem, obterPosicaoConsolidada, obterDashboard } from "@/lib/api";
 
 export default function CartoesPage() {
   const [cartoes, setCartoes] = useState<CartaoItem[]>([]);
@@ -11,6 +11,16 @@ export default function CartoesPage() {
   const [modalExcluirAberto, setModalExcluirAberto] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [mensagemAviso, setMensagemAviso] = useState<string | null>(null);
+  const [posicaoConsolidada, setPosicaoConsolidada] = useState<{
+    totalLiquidBalance: number;
+    totalOpenCreditInvoices: number;
+    immediateNetBalance: number;
+    projectedIncomesUntilClosing: number;
+    projectedNetBalance: number;
+    accounts: Array<{ id: string; name: string; type: string; balance: number }>;
+    cards: Array<{ id: string; name: string; closing_day: number; due_day?: number; faturaAtual: number }>;
+  } | null>(null);
+  const [safeSummary, setSafeSummary] = useState<any>(null);
 
   const carregarCartoes = useCallback(async () => {
     setIsLoading(true);
@@ -44,7 +54,19 @@ export default function CartoesPage() {
     };
 
     try {
-      const resp = await obterCartoes();
+      const [resp, respConsolidado, respDash] = await Promise.all([
+        obterCartoes(),
+        obterPosicaoConsolidada().catch(() => null),
+        obterDashboard().catch(() => null),
+      ]);
+
+      if (respConsolidado?.sucesso && respConsolidado.dados) {
+        setPosicaoConsolidada(respConsolidado.dados);
+      }
+      if (respDash?.sucesso && respDash.data?.saldo?.safeSummary) {
+        setSafeSummary(respDash.data.saldo.safeSummary);
+      }
+
       if (resp.sucesso && resp.dados && resp.dados.length > 0) {
         const listaAtualizada = applyOverrides(resp.dados);
         setCartoes(listaAtualizada);
@@ -205,6 +227,13 @@ export default function CartoesPage() {
           </div>
           <div className="flex items-center gap-2">
             <Link
+              href="/renda-recorrente"
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-[18px] bg-white shadow-[0_0_0_1px_rgba(229,229,229,1)] text-[#0a0a0a] text-[13px] font-medium hover:bg-[#fafafa] active:scale-95 transition-all"
+            >
+              <span className="material-symbols-outlined text-[16px]">payments</span>
+              <span>Renda Recorrente</span>
+            </Link>
+            <Link
               href="/quem-me-deve"
               className="inline-flex items-center gap-1 px-3 py-1.5 rounded-[18px] bg-black text-white text-[13px] font-medium hover:bg-neutral-800 active:scale-95 transition-all shadow-xs"
             >
@@ -245,6 +274,70 @@ export default function CartoesPage() {
           </section>
         ) : (
           <>
+            {/* Posição Consolidada do Titular */}
+            {posicaoConsolidada && (() => {
+              const totalLiquid = posicaoConsolidada.totalLiquidBalance ?? 0;
+              const totalInvoices = posicaoConsolidada.totalOpenCreditInvoices ?? 0;
+              const projectedIncomes = posicaoConsolidada.projectedIncomesUntilClosing ?? 0;
+              const isCovered = totalLiquid >= totalInvoices;
+              const isProjectedCovered = !isCovered && totalLiquid + projectedIncomes >= totalInvoices;
+              const coveragePct = totalInvoices > 0 ? Math.round((totalLiquid / totalInvoices) * 100) : 100;
+              const netBalance = posicaoConsolidada.immediateNetBalance ?? (totalLiquid - totalInvoices);
+
+              return (
+                <section className="w-full rounded-[24px] bg-[#fcfcfc] p-4 border border-black/5 shadow-[0_1px_3px_rgba(0,0,0,0.03)] flex flex-col gap-3">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <span className="material-symbols-outlined text-[18px] text-neutral-800">account_balance</span>
+                      <span className="text-[13px] font-semibold text-[#0a0a0a]">
+                        Posição Consolidada (Mesmo Titular)
+                      </span>
+                    </div>
+                    <span className={`text-[11px] font-semibold px-2 py-0.5 rounded-full ${
+                      isCovered
+                        ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                        : isProjectedCovered
+                        ? "bg-sky-50 text-sky-700 border border-sky-200"
+                        : "bg-rose-50 text-rose-700 border border-rose-200"
+                    }`}>
+                      {isCovered ? "Faturas Cobertas" : isProjectedCovered ? "Coberto com Renda Futura" : "Atenção Faturas"} ({coveragePct}%)
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-3 gap-2 pt-1 text-center sm:text-left">
+                    <div className="flex flex-col bg-white p-2.5 rounded-xl border border-black/5">
+                      <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium">
+                        Total em Contas ({posicaoConsolidada.accounts?.length ?? 0})
+                      </span>
+                      <span className="text-[14px] font-bold text-emerald-600">
+                        R$ {formatarMoeda(posicaoConsolidada.totalLiquidBalance)}
+                      </span>
+                    </div>
+                    <div className="flex flex-col bg-white p-2.5 rounded-xl border border-black/5">
+                      <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium">
+                        Todas as Faturas ({posicaoConsolidada.cards?.length ?? 0})
+                      </span>
+                      <span className="text-[14px] font-bold text-rose-600">
+                        R$ {formatarMoeda(posicaoConsolidada.totalOpenCreditInvoices)}
+                      </span>
+                    </div>
+                    <div className="flex flex-col bg-white p-2.5 rounded-xl border border-black/5">
+                      <span className="text-[10px] uppercase tracking-wider text-neutral-500 font-medium">
+                        Saldo Líquido Real
+                      </span>
+                      <span className={`text-[14px] font-bold ${netBalance >= 0 ? "text-[#0a0a0a]" : "text-rose-600"}`}>
+                        R$ {formatarMoeda(netBalance)}
+                      </span>
+                    </div>
+                  </div>
+
+                  <p className="text-[11px] text-neutral-500">
+                    Mesmo titular: visão unificada de todas as suas contas bancárias contra todas as faturas abertas de cartões.
+                  </p>
+                </section>
+              );
+            })()}
+
             {/* Card Showcase Horizontal Carousel */}
             <section className="flex flex-col gap-2">
               <div className="flex items-center justify-between px-1">
@@ -434,6 +527,26 @@ export default function CartoesPage() {
                     </span>
                   </div>
                 </div>
+
+                {/* Previsão de Renda Antes do Fechamento */}
+                {safeSummary && (safeSummary.projectedIncomes ?? 0) > 0 && cartaoAtual.card_type !== "debit" && (
+                  <div className="p-3 rounded-2xl bg-emerald-50/90 border border-emerald-200/80 flex items-start gap-2.5 text-emerald-950">
+                    <span className="material-symbols-outlined text-[18px] text-emerald-600 mt-0.5 shrink-0">
+                      event_upcoming
+                    </span>
+                    <div className="flex flex-col text-[12px] leading-tight gap-0.5">
+                      <span className="font-semibold text-emerald-900">
+                        Recebimento agendado antes do fechamento
+                      </span>
+                      <span className="text-emerald-800">
+                        +R$ {formatarMoeda(safeSummary.projectedIncomes)} previsto(s) até o fechamento (dia {cartaoAtual.closing_day || safeSummary.targetClosingDay}). Saldo projetado no fechamento:{" "}
+                        <strong className="font-bold text-emerald-950">
+                          R$ {formatarMoeda(safeSummary.projectedSafeToSpend ?? safeSummary.effectiveSafeToSpend ?? 0)}
+                        </strong>.
+                      </span>
+                    </div>
+                  </div>
+                )}
 
                 {/* Limit Usage Bar */}
                 <div className="flex flex-col gap-2 pt-1">

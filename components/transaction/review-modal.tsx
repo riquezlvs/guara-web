@@ -159,10 +159,16 @@ export function ReviewModal({ draft: initialDraft, isOpen, onClose, onSuccess }:
             <div className="flex items-center gap-1.5">
               <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-[18px] bg-white shadow-[0_0_0_1px_rgba(23,23,23,0.06)] text-[12px] text-[#0a0a0a] font-medium tracking-wide">
                 <span className="w-1.5 h-1.5 rounded-full bg-[#0a0a0a] animate-pulse"></span>
-                Interpretação Concluída
+                {draft.origin === 'manual'
+                  ? 'Lançamento Manual'
+                  : draft.origin === 'image'
+                  ? 'Leitura de Imagem Concluída'
+                  : 'Interpretação Concluída'}
               </span>
               <span className="inline-flex items-center px-2 py-1 rounded-[18px] bg-[#f5f5f5] shadow-[0_0_0_1px_rgba(23,23,23,0.06)] text-[11px] text-[#737373] font-mono">
-                {draft.precision || "99.4%"} precisão
+                {draft.origin === 'manual'
+                  ? '100% conferido'
+                  : draft.precision || '99.4% precisão'}
               </span>
             </div>
             <button
@@ -175,18 +181,36 @@ export function ReviewModal({ draft: initialDraft, isOpen, onClose, onSuccess }:
             </button>
           </div>
 
-          {/* Audio / Natural Language Transcription Block */}
+          {/* Audio / Natural Language / Manual / Image Block */}
           <div className="w-full bg-white rounded-[24px] p-5 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.04)] mb-3 flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <span className="text-[12px] uppercase text-[#737373] tracking-wider font-medium">
-                {draft.isAudio ? "Comando Interpretado (Áudio)" : "Comando Interpretado (Texto)"}
+                {draft.origin === 'manual'
+                  ? 'Formulário Manual'
+                  : draft.origin === 'image'
+                  ? 'Comprovante / Extrato (Imagem)'
+                  : draft.isAudio
+                  ? 'Comando Interpretado (Áudio)'
+                  : 'Comando Interpretado (Texto)'}
               </span>
               <div className="flex items-center gap-1 text-[#737373]">
                 <span className="material-symbols-outlined text-[14px]">
-                  {draft.isAudio ? "graphic_eq" : "chat"}
+                  {draft.origin === 'manual'
+                    ? 'edit_note'
+                    : draft.origin === 'image'
+                    ? 'receipt_long'
+                    : draft.isAudio
+                    ? 'graphic_eq'
+                    : 'chat'}
                 </span>
                 <span className="text-[11px] font-mono">
-                  {draft.isAudio ? draft.audioDuration || "0:04s" : "Texto"}
+                  {draft.origin === 'manual'
+                    ? 'Manual'
+                    : draft.origin === 'image'
+                    ? 'OCR / IA'
+                    : draft.isAudio
+                    ? draft.audioDuration || '0:04s'
+                    : 'Texto'}
                 </span>
               </div>
             </div>
@@ -194,7 +218,13 @@ export function ReviewModal({ draft: initialDraft, isOpen, onClose, onSuccess }:
             <div className="flex items-start gap-2.5 bg-[#fafafa] rounded-[16px] p-3 shadow-[0_0_0_1px_rgba(23,23,23,0.04)]">
               <div className="w-6 h-6 rounded-full bg-white shadow-[0_0_0_1px_rgba(23,23,23,0.06)] flex items-center justify-center shrink-0 mt-0.5">
                 <span className="material-symbols-outlined text-[#0a0a0a] text-[14px]">
-                  {draft.isAudio ? "mic" : "notes"}
+                  {draft.origin === 'manual'
+                    ? 'edit'
+                    : draft.origin === 'image'
+                    ? 'image'
+                    : draft.isAudio
+                    ? 'mic'
+                    : 'notes'}
                 </span>
               </div>
               <p className="text-[13px] text-[#171717] italic leading-relaxed">

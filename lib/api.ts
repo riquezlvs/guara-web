@@ -26,6 +26,19 @@ export interface DashboardResponse {
         realBalance: number;
         openCreditInvoices: number;
         accountName: string;
+        projectedSafeToSpend?: number;
+        projectedIncomes?: number;
+        projectedIncomesList?: Array<{
+          id: string;
+          description: string;
+          amount: number;
+          expectedDate: string;
+          incomeType?: string;
+        }>;
+        targetClosingDay?: number;
+        targetClosingDate?: string;
+        coverageStatus?: 'positive' | 'warning' | 'negative';
+        explanationText?: string;
       };
     };
     saldo?: {
@@ -34,6 +47,19 @@ export interface DashboardResponse {
         realBalance: number;
         openCreditInvoices: number;
         accountName: string;
+        projectedSafeToSpend?: number;
+        projectedIncomes?: number;
+        projectedIncomesList?: Array<{
+          id: string;
+          description: string;
+          amount: number;
+          expectedDate: string;
+          incomeType?: string;
+        }>;
+        targetClosingDay?: number;
+        targetClosingDate?: string;
+        coverageStatus?: 'positive' | 'warning' | 'negative';
+        explanationText?: string;
       };
       contas?: Array<{
         id: string;
@@ -42,6 +68,15 @@ export interface DashboardResponse {
         balance: number;
       }>;
     };
+    consolidado?: {
+      totalLiquidBalance: number;
+      totalOpenCreditInvoices: number;
+      immediateNetBalance: number;
+      projectedIncomesUntilClosing: number;
+      projectedNetBalance: number;
+      accounts: Array<{ id: string; name: string; type: string; balance: number }>;
+      cards: Array<{ id: string; name: string; closing_day: number; due_day?: number; faturaAtual: number }>;
+    } | null;
     recentes?: DashboardRecentItem[];
     patrimonio?: {
       totalNetWorth: number;
@@ -122,6 +157,7 @@ export interface DashboardRecentItem {
 export interface TransactionDraft {
   originalInput: string;
   isAudio: boolean;
+  origin?: 'text' | 'audio' | 'manual' | 'image';
   audioDuration?: string;
   precision?: string;
   entryType: 'expense' | 'income';
@@ -153,6 +189,15 @@ export interface PreviewResponse {
   tipo: 'gasto' | 'entrada' | 'mensagem';
   mensagem: string;
   dados?: TransactionDraft;
+  multiplos?: Array<{
+    description: string;
+    totalAmount: number;
+    categoryId: number;
+    categoryName: string;
+    occurredAt: string;
+    installmentNumber?: number;
+    installmentTotal?: number;
+  }>;
 }
 
 const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
@@ -180,6 +225,34 @@ export async function interpretarTransacao(
   if (!res.ok) {
     const erroData = await res.json().catch(() => ({}));
     throw new Error(erroData.mensagem || `Erro ao interpretar comando: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Envia uma foto/imagem de comprovante ou extrato para interpretação via IA multimodal (Gemini Vision)
+ */
+export async function interpretarImagemTransacao(
+  imageBase64: string,
+  mimeType: string = 'image/jpeg',
+  legenda?: string
+): Promise<PreviewResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/chat/image-preview`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      imageBase64,
+      mimeType,
+      caption: legenda,
+    }),
+  });
+
+  if (!res.ok) {
+    const erroData = await res.json().catch(() => ({}));
+    throw new Error(erroData.mensagem || `Erro ao processar imagem: ${res.status}`);
   }
 
   return res.json();
@@ -948,6 +1021,164 @@ export async function resgatarValorInvestimento(dados: {
     name: dados.name,
     novoSaldo,
   });
+}
+
+export interface ReceitaAvulsaInput {
+  description: string;
+  amount: number;
+  accountId?: string;
+  occurredAt?: string;
+  categoryId?: number;
+  incomeType?: 'salary' | 'freelance' | 'benefit' | 'other';
+  paymentMethod?: string;
+}
+
+/**
+ * Cadastra uma receita avulsa (freelance, pagamentos de terceiros, reembolsos ou extras)
+ */
+export async function cadastrarReceitaAvulsa(dados: ReceitaAvulsaInput): Promise<{
+  sucesso: boolean;
+  mensagem: string;
+  dados?: any;
+}> {
+  const res = await fetch(`${API_BASE_URL}/api/incomes`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(dados),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao registrar receita: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+export interface RendaRecorrenteItem {
+  id: string;
+  description: string;
+  total_amount: number;
+  day_of_month: number;
+  entry_type: 'expense' | 'income';
+  income_type?: 'salary' | 'freelance' | 'benefit' | 'other' | null;
+  weekend_rule?: 'anticipate' | 'postpone' | 'exact';
+  account_id?: string | null;
+  category_id?: number | null;
+  payment_method?: string | null;
+  is_active: boolean;
+}
+
+export interface NovaRendaRecorrenteInput {
+  description: string;
+  total_amount: number;
+  day_of_month: number;
+  entry_type?: 'expense' | 'income';
+  income_type?: 'salary' | 'freelance' | 'benefit' | 'other';
+  weekend_rule?: 'anticipate' | 'postpone' | 'exact';
+  account_id?: string;
+  category_id?: number;
+  payment_method?: string;
+}
+
+/**
+ * Lista as recorrências cadastradas (filtrando por receitas ou despesas)
+ */
+export async function listarRendasRecorrentes(
+  tipo: 'expense' | 'income' = 'income'
+): Promise<{ sucesso: boolean; dados: RendaRecorrenteItem[] }> {
+  const res = await fetch(`${API_BASE_URL}/api/recurring?type=${tipo}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao listar recorrências: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Cadastra uma nova renda ou despesa recorrente no banco de dados
+ */
+export async function cadastrarRendaRecorrente(dados: NovaRendaRecorrenteInput): Promise<{
+  sucesso: boolean;
+  mensagem: string;
+  dados?: any;
+}> {
+  const res = await fetch(`${API_BASE_URL}/api/recurring`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(dados),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao cadastrar recorrência: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Exclui / desativa uma recorrência existente
+ */
+export async function excluirRendaRecorrente(id: string): Promise<{
+  sucesso: boolean;
+  mensagem: string;
+}> {
+  const res = await fetch(`${API_BASE_URL}/api/recurring/remover`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ id }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao remover recorrência: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Obtém a posição financeira consolidada do titular (todas as contas vs faturas de todos os cartões)
+ */
+export async function obterPosicaoConsolidada(): Promise<{
+  sucesso: boolean;
+  dados: {
+    totalLiquidBalance: number;
+    totalOpenCreditInvoices: number;
+    immediateNetBalance: number;
+    projectedIncomesUntilClosing: number;
+    projectedNetBalance: number;
+    accounts: Array<{ id: string; name: string; type: string; balance: number }>;
+    cards: Array<{ id: string; name: string; closing_day: number; due_day?: number; faturaAtual: number }>;
+  };
+}> {
+  const res = await fetch(`${API_BASE_URL}/api/accounts/summary`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao obter posição consolidada: ${res.status}`);
+  }
+
+  return res.json();
 }
 
 

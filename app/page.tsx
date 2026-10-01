@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import Link from "next/link";
 import { obterDashboard, DashboardResponse, DashboardRecentItem, interpretarTransacao, TransactionDraft, adicionarAporteInvestimento, resgatarValorInvestimento } from "@/lib/api";
 import { ReviewModal } from "@/components/transaction/review-modal";
+import { IncomeModal } from "@/components/transaction/income-modal";
 
 type RecentItemGroup = DashboardRecentItem & {
   installmentNumber?: number;
@@ -66,6 +67,7 @@ export default function Home() {
   // Aporte & Resgate Modal States
   const [modalAporteAberto, setModalAporteAberto] = useState(false);
   const [modalResgateAberto, setModalResgateAberto] = useState(false);
+  const [modalReceitaAberto, setModalReceitaAberto] = useState(false);
   const [metaSelecionadaAporte, setMetaSelecionadaAporte] = useState<{
     id: string;
     nome: string;
@@ -213,19 +215,39 @@ export default function Home() {
     }
   };
 
-  // Safe-to-Spend metrics
+  // Safe-to-Spend metrics (com projeção até o fechamento da fatura)
   const safeMetrics = useMemo(() => {
-    const safeToSpend = dashboardData?.saldo?.safeSummary?.safeToSpend ?? 0;
+    const summary = dashboardData?.saldo?.safeSummary;
+    const realBalance = summary?.realBalance ?? 0;
+    const openInvoices = summary?.openCreditInvoices ?? 0;
+    const projectedIncomes = summary?.projectedIncomes ?? 0;
+    const immediateSafeToSpend = summary?.safeToSpend ?? (realBalance - openInvoices);
+
+    // Se houver entradas programadas antes do fechamento, exibe o saldo projetado no fechamento
+    // para que a pessoa não veja valor negativado injustamente!
+    const effectiveSafeToSpend =
+      summary?.projectedSafeToSpend !== undefined ? summary.projectedSafeToSpend : immediateSafeToSpend;
+
+    const safeToSpend = effectiveSafeToSpend;
     const today = new Date();
     const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
     const daysLeft = Math.max(1, lastDayOfMonth - today.getDate());
     const dailyAllowance = safeToSpend > 0 ? safeToSpend / daysLeft : 0;
+
     return {
       safeToSpend,
+      immediateSafeToSpend,
+      realBalance,
+      openInvoices,
+      projectedIncomes,
+      projectedIncomesList: summary?.projectedIncomesList || [],
+      targetClosingDay: summary?.targetClosingDay,
+      targetClosingDate: summary?.targetClosingDate,
+      coverageStatus: summary?.coverageStatus || (safeToSpend >= 0 ? "positive" : "negative"),
+      explanationText: summary?.explanationText,
       daysLeft,
       dailyAllowance,
-      accountName: dashboardData?.saldo?.safeSummary?.accountName || "Conta Principal",
-      openInvoices: dashboardData?.saldo?.safeSummary?.openCreditInvoices ?? 0,
+      accountName: summary?.accountName || "Conta Principal",
     };
   }, [dashboardData]);
 
@@ -405,12 +427,14 @@ export default function Home() {
       )}
 
       <div className="flex flex-col w-full gap-5">
-        {/* 1. Safe-to-Spend Header Block */}
+        {/* 1. Safe-to-Spend Header Block com Projeção até o Fechamento */}
         <section className="flex flex-col gap-2 pt-2">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <span className="text-[12px] uppercase tracking-[0.05em] text-[#737373] font-medium">
-                Saldo Safe-to-Spend
+                {safeMetrics.projectedIncomes > 0
+                  ? `Saldo Seguro Projetado (Fecha dia ${safeMetrics.targetClosingDay || 23})`
+                  : "Saldo Safe-to-Spend"}
               </span>
               <button
                 type="button"
@@ -437,31 +461,78 @@ export default function Home() {
                   progress_activity
                 </span>
                 <span className="text-[14px] font-medium text-[#737373] animate-pulse">
-                  Carregando saldo...
+                  Calculando projeção...
                 </span>
               </div>
             ) : (
-              <h1 className="text-[38px] text-[#0a0a0a] font-semibold tracking-[-0.03em] leading-none">
-                {isValuesHidden
-                  ? "R$ ••••••"
-                  : `R$ ${safeMetrics.safeToSpend.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
-              </h1>
+              <div className="flex items-baseline gap-2">
+                <h1 className={`text-[38px] font-semibold tracking-[-0.03em] leading-none ${
+                  safeMetrics.safeToSpend >= 0 ? "text-[#0a0a0a]" : "text-rose-600"
+                }`}>
+                  {isValuesHidden
+                    ? "R$ ••••••"
+                    : `R$ ${safeMetrics.safeToSpend.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                </h1>
+                {safeMetrics.projectedIncomes > 0 && (
+                  <span className="px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 font-medium text-[11px] flex items-center gap-0.5">
+                    <span className="material-symbols-outlined text-[13px]">check_circle</span>
+                    Positivo no Fechamento
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
+          {/* Explicação da Projeção Temporal */}
+          {safeMetrics.projectedIncomes > 0 && !isLoading && (
+            <div className="p-3 bg-emerald-50/60 rounded-[16px] border border-emerald-100 flex flex-col gap-1 text-[12px] text-emerald-900 animate-in fade-in">
+              <div className="flex items-center justify-between font-semibold">
+                <span className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[15px] text-emerald-600">auto_awesome</span>
+                  Projeção do Fechamento
+                </span>
+                <span className="font-mono text-[11px]">
+                  +R$ {isValuesHidden ? "••••" : safeMetrics.projectedIncomes.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+              <p className="text-[11px] text-emerald-800 leading-relaxed">
+                Você recebe <strong>R$ {safeMetrics.projectedIncomes.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}</strong> antes do cartão fechar (dia {safeMetrics.targetClosingDay || 23}). Portanto, sua fatura de R$ {safeMetrics.openInvoices.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} será coberta com folga, mantendo seu saldo no verde.
+              </p>
+            </div>
+          )}
+
           <div className="text-[12px] text-[#737373] min-h-[18px]">
             {isLoading ? (
-              <span className="animate-pulse">Consultando dados no banco...</span>
+              <span className="animate-pulse">Consultando fluxo de caixa...</span>
             ) : (
               <span>
                 Disponível para gastar nos próximos{" "}
-                <span className="font-semibold text-[#0a0a0a]">{safeMetrics.daysLeft} dias</span> do mês (média de{" "}
+                <span className="font-semibold text-[#0a0a0a]">{safeMetrics.daysLeft} dias</span> (média de{" "}
                 {isValuesHidden
                   ? "R$ ••••••/dia"
                   : `R$ ${safeMetrics.dailyAllowance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}/dia`}
                 )
               </span>
             )}
+          </div>
+
+          {/* Ações Rápidas: + Recebimento / + Renda */}
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={() => setModalReceitaAberto(true)}
+              className="flex-1 py-2 px-3 rounded-[16px] bg-[#0a0a0a] text-white text-[12px] font-medium hover:bg-neutral-800 active:scale-98 transition-all flex items-center justify-center gap-1.5 cursor-pointer shadow-xs"
+            >
+              <span className="material-symbols-outlined text-[16px]">add_circle</span>
+              <span>+ Recebimento (Freela / Salário)</span>
+            </button>
+            <Link
+              href="/renda-recorrente/novo"
+              className="py-2 px-3 rounded-[16px] bg-[#f5f5f5] text-[#0a0a0a] border border-black/5 text-[12px] font-medium hover:bg-neutral-200 active:scale-98 transition-all flex items-center justify-center gap-1 cursor-pointer"
+            >
+              <span className="material-symbols-outlined text-[16px]">event_repeat</span>
+              <span>Renda Fixa</span>
+            </Link>
           </div>
         </section>
 
@@ -482,7 +553,7 @@ export default function Home() {
               value={quickInput}
               onChange={(e) => setQuickInput(e.target.value)}
               disabled={isProcessingPrompt}
-              placeholder='Ex: "Gastei 45 no almoço", "Uber 28"...'
+              placeholder='Ex: "Gastei 45 no almoço", "Freela 800"...'
               className="w-full bg-transparent border-none outline-none text-[13px] text-[#0a0a0a] placeholder:text-[#737373] font-normal"
             />
             <button
@@ -498,6 +569,14 @@ export default function Home() {
 
           {/* Quick Suggestion Chips */}
           <div className="flex gap-1.5 overflow-x-auto px-1 pb-0.5 no-scrollbar">
+            <button
+              type="button"
+              onClick={() => setModalReceitaAberto(true)}
+              className="px-2.5 py-1 rounded-[12px] bg-emerald-50 border border-emerald-200 text-[11px] text-emerald-800 hover:bg-emerald-100 active:scale-95 transition-all font-medium shrink-0 cursor-pointer flex items-center gap-1"
+            >
+              <span className="material-symbols-outlined text-[13px]">payments</span>
+              + Freelance / Ganho
+            </button>
             <button
               type="button"
               onClick={() => handleTriggerQuickEntry("Almoço 38")}
@@ -521,6 +600,62 @@ export default function Home() {
             </button>
           </div>
         </div>
+
+        {/* 2.5 Posição Consolidada da Pessoa (Você: Contas & Cartões) */}
+        {dashboardData?.consolidado && (
+          <section className="w-full rounded-[24px] bg-white p-4 border border-black/5 shadow-[0_1px_3px_rgba(0,0,0,0.05)] flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-[#0a0a0a]">account_balance</span>
+                <span className="text-[12px] uppercase tracking-[0.05em] text-[#737373] font-medium">
+                  Posição Consolidada (Mesmo Titular)
+                </span>
+              </div>
+              <Link
+                href="/cartoes"
+                className="text-[11px] text-[#737373] hover:text-[#0a0a0a] font-medium flex items-center gap-0.5"
+              >
+                <span>Ver Cartões</span>
+                <span className="material-symbols-outlined text-[13px]">chevron_right</span>
+              </Link>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 text-[12px]">
+              <div className="p-3 bg-[#f5f5f5] rounded-xl flex flex-col gap-0.5">
+                <span className="text-[#737373] text-[11px]">Total em Contas</span>
+                <span className="font-semibold text-[#0a0a0a] text-[15px]">
+                  {isValuesHidden
+                    ? "R$ ••••••"
+                    : `R$ ${dashboardData.consolidado.totalLiquidBalance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                </span>
+                <span className="text-[10px] text-[#737373]">
+                  {dashboardData.consolidado.accounts.length} conta{dashboardData.consolidado.accounts.length !== 1 ? "s" : ""} corrente{dashboardData.consolidado.accounts.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+
+              <div className="p-3 bg-[#f5f5f5] rounded-xl flex flex-col gap-0.5">
+                <span className="text-[#737373] text-[11px]">Faturas de Cartões</span>
+                <span className="font-semibold text-[#0a0a0a] text-[15px]">
+                  {isValuesHidden
+                    ? "R$ ••••••"
+                    : `R$ ${dashboardData.consolidado.totalOpenCreditInvoices.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
+                </span>
+                <span className="text-[10px] text-[#737373]">
+                  {dashboardData.consolidado.cards.length} cartão{dashboardData.consolidado.cards.length !== 1 ? "ões" : ""} com fatura
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-[#737373] px-1 pt-1 border-t border-black/5">
+              <span>Cobertura imediata da sua dívida:</span>
+              <span className="font-semibold text-[#0a0a0a]">
+                {dashboardData.consolidado.totalOpenCreditInvoices > 0
+                  ? `${Math.round((dashboardData.consolidado.totalLiquidBalance / dashboardData.consolidado.totalOpenCreditInvoices) * 100)}% coberta`
+                  : "100% coberta (sem faturas)"}
+              </span>
+            </div>
+          </section>
+        )}
 
         {/* 3. Consolidated Net Worth Card */}
         <Link
@@ -1335,6 +1470,17 @@ export default function Home() {
           }}
         />
       )}
+
+      {/* Income Modal for Freelance, Third-party & Recurring Incomes */}
+      <IncomeModal
+        isOpen={modalReceitaAberto}
+        onClose={() => setModalReceitaAberto(false)}
+        onSuccess={(msg) => {
+          setFeedbackToast(msg);
+          setTimeout(() => setFeedbackToast(null), 4000);
+          carregarDashboard();
+        }}
+      />
     </main>
   );
 }

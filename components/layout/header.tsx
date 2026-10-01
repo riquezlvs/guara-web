@@ -20,6 +20,7 @@ export function Header() {
     if (pathname === "/") return "Início";
     if (pathname.startsWith("/extrato")) return "Extrato";
     if (pathname.startsWith("/cartoes")) return "Cartões";
+    if (pathname.startsWith("/renda-recorrente")) return "Renda Recorrente";
     if (pathname.startsWith("/quem-me-deve")) return "Quem Me Deve";
     if (pathname.startsWith("/investimentos")) return "Investimentos";
     return "Finanças";

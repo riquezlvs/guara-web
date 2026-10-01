@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { cadastrarRendaRecorrente, obterContasDisponiveis } from "@/lib/api";
 
 export default function NovaRendaRecorrentePage() {
   const router = useRouter();
@@ -24,9 +25,26 @@ export default function NovaRendaRecorrentePage() {
   // Sync with Guará IA
   const [guaraSync, setGuaraSync] = useState(true);
 
+  // Accounts
+  const [contas, setContas] = useState<Array<{ id: string; name: string; type: string; balance: number }>>([]);
+  const [selectedAccountId, setSelectedAccountId] = useState<string>("");
+
   // Submission / State
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
+  const [erroMsg, setErroMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    obterContasDisponiveis().then((res) => {
+      if (res.sucesso && res.dados && res.dados.length > 0) {
+        setContas(res.dados);
+        const checking = res.dados.find((c) => c.type === "checking");
+        setSelectedAccountId(checking ? checking.id : res.dados[0].id);
+      }
+    }).catch((err) => {
+      console.warn("Erro ao buscar contas:", err);
+    });
+  }, []);
 
   const handleValueChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     let digits = e.target.value.replace(/\D/g, "");
@@ -38,15 +56,61 @@ export default function NovaRendaRecorrentePage() {
     setNetValue(num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
+    const rawVal = parseFloat(netValue.replace(/\./g, "").replace(",", ".")) || 0;
+    if (rawVal <= 0) {
+      setErroMsg("Informe um valor maior que zero.");
+      return;
+    }
+
+    let dia = 5;
+    if (scheduledDay === "20") dia = 20;
+    else if (scheduledDay === "5th-business") dia = 7;
+    else if (scheduledDay === "last-business") dia = 28;
+    else {
+      const parsed = parseInt(scheduledDay, 10);
+      if (!isNaN(parsed)) dia = parsed;
+    }
+
+    const typeDescMap: Record<string, string> = {
+      salary: "Salário Principal",
+      vr: "Vale-Refeição (VR)",
+      va: "Vale-Alimentação (VA)",
+      advance: "Adiantamento Salarial",
+      other: "Outro Benefício",
+    };
+
+    const incomeType =
+      selectedType === "vr" || selectedType === "va"
+        ? "benefit"
+        : selectedType === "salary"
+        ? "salary"
+        : "other";
+
     setIsSubmitting(true);
-    setTimeout(() => {
-      setIsSubmitting(false);
+    setErroMsg(null);
+
+    try {
+      await cadastrarRendaRecorrente({
+        description: typeDescMap[selectedType] || "Renda Recorrente",
+        total_amount: rawVal,
+        day_of_month: dia,
+        entry_type: "income",
+        income_type: incomeType as any,
+        weekend_rule: weekendRule,
+        account_id: selectedAccountId || undefined,
+        payment_method: selectedType === "vr" || selectedType === "va" ? "meal_voucher" : "pix",
+      });
+
       setIsSuccess(true);
+      window.dispatchEvent(new CustomEvent("finances:refresh"));
       setTimeout(() => {
         router.back();
       }, 700);
-    }, 800);
+    } catch (err: any) {
+      setErroMsg(err.message || "Erro ao salvar renda recorrente.");
+      setIsSubmitting(false);
+    }
   };
 
   const isBenefitCardVisible = selectedType === "vr" || selectedType === "va";
