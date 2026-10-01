@@ -6,19 +6,69 @@ import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import Link from "next/link";
-import { obterExtrato, ExtratoResponse, ItemExtrato } from "@/lib/api";
+import {
+  obterExtrato,
+  ExtratoResponse,
+  ItemExtrato,
+  RecorrenciaMesItem,
+  listarTodasRecorrencias,
+} from "@/lib/api";
 
 export default function ExtratoPage() {
   const [extratoData, setExtratoData] = useState<ExtratoResponse["dados"] | null>(null);
   const [isLoadingExtrato, setIsLoadingExtrato] = useState(true);
   const [filterPill, setFilterPill] = useState("Todos");
   const [searchQuery, setSearchQuery] = useState("");
+  const [isRecorrenciasOpen, setIsRecorrenciasOpen] = useState(true);
+  const [recorrenciasTab, setRecorrenciasTab] = useState<"todas" | "entradas" | "saidas">("todas");
 
   const carregarExtrato = useCallback(async (mesAno?: string) => {
     setIsLoadingExtrato(true);
     try {
       const resp = await obterExtrato(mesAno);
       if (resp.sucesso && resp.dados) {
+        // Fallback: se o backend não enviou a lista calculada de recorrências, busca diretamente
+        if (!resp.dados.recorrencias || resp.dados.recorrencias.length === 0) {
+          try {
+            const recResp = await listarTodasRecorrencias();
+            if (recResp.sucesso && recResp.dados && recResp.dados.length > 0) {
+              const mesAlvo = resp.dados.mesAno || new Date().toISOString().slice(0, 7);
+              const [anoStr, mesStr] = mesAlvo.split("-");
+              const ano = parseInt(anoStr, 10);
+              const mesIdx = parseInt(mesStr, 10) - 1;
+
+              const formatadas: RecorrenciaMesItem[] = recResp.dados.map((r) => {
+                const dia = Math.min(31, Math.max(1, r.day_of_month || 5));
+                const dataEfetivaFormatada = `${ano}-${String(mesIdx + 1).padStart(2, "0")}-${String(dia).padStart(2, "0")}`;
+                const descLower = (r.description || "").toLowerCase().trim();
+                const jaRealizada = (resp.dados.itens || []).some((t) => {
+                  const tDesc = (t.description || "").toLowerCase().trim();
+                  return (
+                    t.entry_type === r.entry_type &&
+                    (Boolean(t.is_recurring) || tDesc.includes(descLower) || descLower.includes(tDesc))
+                  );
+                });
+
+                return {
+                  id: r.id,
+                  description: r.description,
+                  total_amount: Number(r.total_amount),
+                  day_of_month: dia,
+                  dataEfetivaFormatada,
+                  entry_type: r.entry_type,
+                  income_type: r.income_type,
+                  weekend_rule: r.weekend_rule,
+                  payment_method: r.payment_method,
+                  status: jaRealizada ? "realizada" : "prevista",
+                };
+              });
+
+              resp.dados.recorrencias = formatadas;
+            }
+          } catch (eFallback) {
+            console.warn("Fallback de recorrências:", eFallback);
+          }
+        }
         setExtratoData(resp.dados);
       }
     } catch (err) {
@@ -49,6 +99,7 @@ export default function ExtratoPage() {
   };
 
   const transacoes = extratoData?.itens || [];
+  const recorrencias = extratoData?.recorrencias || [];
 
   // Função utilitária para obter a chave única da compra completa caso seja parcelada
   const getInstallmentBaseKey = (t: ItemExtrato) => {
@@ -63,10 +114,22 @@ export default function ExtratoPage() {
     return null;
   };
 
-  // Filtragem inicial (tipo, método de pagamento e busca)
+  // Filtragem inicial (tipo, método de pagamento, recorrência e busca)
   const filtradas = transacoes.filter((item: ItemExtrato) => {
     if (filterPill === "Entradas" && item.entry_type !== "income") return false;
     if (filterPill === "Saídas" && item.entry_type !== "expense") return false;
+    if (filterPill === "Recorrentes") {
+      const ehRecorrente = Boolean(item.is_recurring);
+      const descItemLower = (item.description || "").toLowerCase().trim();
+      const bateRegra = recorrencias.some((r) => {
+        const rDescLower = (r.description || "").toLowerCase().trim();
+        return (
+          r.entry_type === item.entry_type &&
+          (descItemLower === rDescLower || descItemLower.includes(rDescLower) || rDescLower.includes(descItemLower))
+        );
+      });
+      if (!ehRecorrente && !bateRegra) return false;
+    }
     if (filterPill === "pix" && item.payment_method !== "pix") return false;
     if (filterPill === "credit_card" && item.payment_method !== "credit_card") return false;
     if (filterPill === "debit_card" && item.payment_method !== "debit_card") return false;
@@ -264,9 +327,298 @@ export default function ExtratoPage() {
           </div>
         </Card>
 
+        {/* Recorrências do Mês Card */}
+        {(() => {
+          const recorrenciasDoMes = extratoData?.recorrencias || [];
+          const totais = extratoData?.totaisRecorrentes || {
+            totalEntradasPrevistas: recorrenciasDoMes
+              .filter((r) => r.entry_type === "income")
+              .reduce((acc, r) => acc + Number(r.total_amount), 0),
+            totalSaidasPrevistas: recorrenciasDoMes
+              .filter((r) => r.entry_type === "expense")
+              .reduce((acc, r) => acc + Number(r.total_amount), 0),
+            totalEntradasRealizadas: 0,
+            totalSaidasRealizadas: 0,
+            saldoLiquidoRecorrente: 0,
+          };
+
+          const totalEntradasRecorrentes = totais.totalEntradasPrevistas;
+          const totalSaidasRecorrentes = totais.totalSaidasPrevistas;
+          const saldoRecorrente =
+            totais.saldoLiquidoRecorrente !== undefined
+              ? totais.saldoLiquidoRecorrente
+              : totalEntradasRecorrentes - totalSaidasRecorrentes;
+
+          const recorrenciasFiltradas = recorrenciasDoMes.filter((r) => {
+            if (recorrenciasTab === "entradas") return r.entry_type === "income";
+            if (recorrenciasTab === "saidas") return r.entry_type === "expense";
+            return true;
+          });
+
+          if (recorrenciasDoMes.length === 0) {
+            return null;
+          }
+
+          return (
+            <Card className="w-full rounded-[24px] bg-white p-4 border border-black/5 shadow-[0_1px_3px_rgba(0,0,0,0.06)] flex flex-col gap-3">
+              {/* Header with expand/collapse */}
+              <div
+                className="flex items-center justify-between cursor-pointer select-none"
+                onClick={() => setIsRecorrenciasOpen(!isRecorrenciasOpen)}
+              >
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-[12px] bg-black text-white flex items-center justify-center shrink-0 shadow-2xs">
+                    <span className="material-symbols-outlined text-[17px]">event_repeat</span>
+                  </div>
+                  <div className="flex flex-col">
+                    <div className="flex items-center gap-1.5">
+                      <h2 className="text-[14px] font-semibold text-[#0a0a0a] tracking-tight">
+                        Recorrências do Mês
+                      </h2>
+                      <span className="px-1.5 py-0 rounded-[6px] text-[10px] bg-[#f5f5f5] text-[#737373] font-mono">
+                        {recorrenciasDoMes.length}
+                      </span>
+                    </div>
+                    <span className="text-[11px] text-[#737373]">
+                      Salários, freelas e contas fixas
+                    </span>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="text-right">
+                    <span className="text-[10px] uppercase tracking-wider text-[#737373] block font-medium">
+                      Previsto
+                    </span>
+                    <span
+                      className={`text-[13px] font-semibold tracking-tight ${
+                        saldoRecorrente >= 0 ? "text-emerald-700" : "text-rose-600"
+                      }`}
+                    >
+                      {saldoRecorrente >= 0 ? "+" : ""}
+                      R$ {saldoRecorrente.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                  <button
+                    type="button"
+                    className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-neutral-100 text-[#737373] transition-colors cursor-pointer"
+                    aria-label={isRecorrenciasOpen ? "Recolher" : "Expandir"}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">
+                      {isRecorrenciasOpen ? "expand_less" : "expand_more"}
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              {isRecorrenciasOpen && (
+                <div className="flex flex-col gap-3 pt-1 animate-in fade-in duration-200">
+                  {/* Subtabs: Todas / Entradas / Saídas */}
+                  <div className="flex items-center justify-between gap-1 bg-[#f5f5f5] p-1 rounded-[16px]">
+                    <button
+                      type="button"
+                      onClick={() => setRecorrenciasTab("todas")}
+                      className={`flex-1 py-1 px-2 rounded-[12px] text-[11px] font-medium transition-all text-center cursor-pointer ${
+                        recorrenciasTab === "todas"
+                          ? "bg-white text-[#0a0a0a] shadow-xs font-semibold"
+                          : "text-[#737373] hover:text-[#0a0a0a]"
+                      }`}
+                    >
+                      Todas ({recorrenciasDoMes.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRecorrenciasTab("entradas")}
+                      className={`flex-1 py-1 px-2 rounded-[12px] text-[11px] font-medium transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
+                        recorrenciasTab === "entradas"
+                          ? "bg-white text-emerald-700 shadow-xs font-semibold"
+                          : "text-[#737373] hover:text-emerald-700"
+                      }`}
+                    >
+                      <span>Entradas</span>
+                      <span className="text-[10px] opacity-75">
+                        (+R${" "}
+                        {totalEntradasRecorrentes.toLocaleString("pt-BR", {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        })}
+                        )
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setRecorrenciasTab("saidas")}
+                      className={`flex-1 py-1 px-2 rounded-[12px] text-[11px] font-medium transition-all text-center flex items-center justify-center gap-1 cursor-pointer ${
+                        recorrenciasTab === "saidas"
+                          ? "bg-white text-rose-600 shadow-xs font-semibold"
+                          : "text-[#737373] hover:text-rose-600"
+                      }`}
+                    >
+                      <span>Saídas</span>
+                      <span className="text-[10px] opacity-75">
+                        (-R${" "}
+                        {totalSaidasRecorrentes.toLocaleString("pt-BR", {
+                          minimumFractionDigits: 0,
+                          maximumFractionDigits: 0,
+                        })}
+                        )
+                      </span>
+                    </button>
+                  </div>
+
+                  {/* List of Recurring Items */}
+                  <div className="flex flex-col gap-1.5">
+                    {recorrenciasFiltradas.length === 0 ? (
+                      <div className="py-4 text-center text-[#737373] text-[12px]">
+                        Nenhuma recorrência nesta categoria.
+                      </div>
+                    ) : (
+                      recorrenciasFiltradas.map((r) => {
+                        const isIncome = r.entry_type === "income";
+                        const iconName = isIncome
+                          ? r.income_type === "salary"
+                            ? "work"
+                            : r.income_type === "freelance"
+                            ? "computer"
+                            : r.income_type === "benefit"
+                            ? "restaurant"
+                            : "payments"
+                          : r.payment_method === "credit_card"
+                          ? "credit_card"
+                          : "repeat";
+
+                        const tagLabel = isIncome
+                          ? r.income_type === "salary"
+                            ? "Salário"
+                            : r.income_type === "freelance"
+                            ? "Freelance"
+                            : r.income_type === "benefit"
+                            ? "Benefício"
+                            : "Receita Fixa"
+                          : "Despesa Fixa";
+
+                        const isRealizada = r.status === "realizada";
+
+                        let dataFormatada = `Todo dia ${String(r.day_of_month).padStart(2, "0")}`;
+                        if (r.dataEfetivaFormatada) {
+                          try {
+                            const [, m, d] = r.dataEfetivaFormatada.split("-");
+                            dataFormatada = `Dia ${d}/${m}`;
+                          } catch {}
+                        }
+
+                        return (
+                          <div
+                            key={r.id}
+                            className="p-3 rounded-[16px] bg-[#fafafa] border border-black/[0.04] flex items-center justify-between gap-2.5 transition-all hover:bg-neutral-100/70"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div
+                                className={`w-8 h-8 rounded-[12px] flex items-center justify-center shrink-0 ${
+                                  isIncome
+                                    ? r.income_type === "salary"
+                                      ? "bg-emerald-100/80 text-emerald-700"
+                                      : r.income_type === "freelance"
+                                      ? "bg-sky-100/80 text-sky-700"
+                                      : "bg-amber-100/80 text-amber-700"
+                                    : "bg-[#ececec] text-[#0a0a0a]"
+                                }`}
+                              >
+                                <span className="material-symbols-outlined text-[17px]">
+                                  {iconName}
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col min-w-0">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <span className="text-[13px] font-semibold text-[#0a0a0a] truncate">
+                                    {r.description}
+                                  </span>
+                                  <span
+                                    className={`px-1.5 py-0 rounded-[6px] text-[9px] font-medium uppercase tracking-wider ${
+                                      isIncome
+                                        ? "bg-emerald-50 text-emerald-800"
+                                        : "bg-neutral-200/60 text-[#737373]"
+                                    }`}
+                                  >
+                                    {tagLabel}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-1 text-[11px] text-[#737373] truncate">
+                                  <span>{dataFormatada}</span>
+                                  {r.account_name && (
+                                    <>
+                                      <span>•</span>
+                                      <span>{r.account_name}</span>
+                                    </>
+                                  )}
+                                  {r.payment_method && (
+                                    <>
+                                      <span>•</span>
+                                      <span className="capitalize">{r.payment_method}</span>
+                                    </>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="text-right shrink-0 flex flex-col items-end gap-0.5">
+                              <span
+                                className={`text-[13px] font-semibold ${
+                                  isIncome ? "text-emerald-700" : "text-[#0a0a0a]"
+                                }`}
+                              >
+                                {isIncome ? "+" : "-"}R${" "}
+                                {Number(r.total_amount).toLocaleString("pt-BR", {
+                                  minimumFractionDigits: 2,
+                                })}
+                              </span>
+
+                              <span
+                                className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded-[6px] text-[10px] font-medium ${
+                                  isRealizada
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : "bg-amber-50 text-amber-700"
+                                }`}
+                              >
+                                <span className="material-symbols-outlined text-[11px]">
+                                  {isRealizada ? "check_circle" : "schedule"}
+                                </span>
+                                <span>{isRealizada ? "No extrato" : "Previsto"}</span>
+                              </span>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Footer Link to /renda-recorrente */}
+                  <div className="pt-1 flex items-center justify-between border-t border-black/[0.04]">
+                    <span className="text-[11px] text-[#737373]">
+                      {totais.totalEntradasRealizadas > 0
+                        ? `R$ ${totais.totalEntradasRealizadas.toLocaleString("pt-BR", {
+                            minimumFractionDigits: 2,
+                          })} em entradas já confirmadas`
+                        : "Acompanhe suas entradas e saídas planejadas"}
+                    </span>
+                    <Link
+                      href="/renda-recorrente"
+                      className="text-[11px] font-medium text-[#0a0a0a] hover:underline flex items-center gap-0.5"
+                    >
+                      <span>Gerenciar</span>
+                      <span className="material-symbols-outlined text-[13px]">arrow_forward</span>
+                    </Link>
+                  </div>
+                </div>
+              )}
+            </Card>
+          );
+        })()}
+
         {/* Filter Pills */}
         <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
-          {["Todos", "Entradas", "Saídas", "pix", "credit_card", "debit_card"].map((pill) => {
+          {["Todos", "Entradas", "Saídas", "Recorrentes", "pix", "credit_card", "debit_card"].map((pill) => {
             const rotulo =
               pill === "pix"
                 ? "PIX"
@@ -281,7 +633,7 @@ export default function ExtratoPage() {
                 key={pill}
                 type="button"
                 onClick={() => setFilterPill(pill)}
-                className={`px-3 py-1 rounded-[14px] text-[11px] font-medium tracking-tight whitespace-nowrap transition-all ${
+                className={`px-3 py-1 rounded-[14px] text-[11px] font-medium tracking-tight whitespace-nowrap transition-all cursor-pointer ${
                   isSelected
                     ? "bg-black text-white shadow-xs"
                     : "bg-white text-[#737373] border border-black/5 hover:text-[#0a0a0a]"
@@ -379,7 +731,7 @@ export default function ExtratoPage() {
                             </span>
                           </div>
                           <div className="flex flex-col min-w-0">
-                            <div className="flex items-center gap-1.5">
+                            <div className="flex items-center gap-1.5 flex-wrap">
                               <span className="text-[13px] font-medium text-[#0a0a0a] truncate">
                                 {descricaoLimpa}
                               </span>
@@ -389,6 +741,15 @@ export default function ExtratoPage() {
                               >
                                 {categoria}
                               </Badge>
+                              {Boolean(t.is_recurring) && (
+                                <Badge
+                                  variant="secondary"
+                                  className="px-1.5 py-0 text-[9px] uppercase bg-amber-50 text-amber-700 border border-amber-200/60 font-medium shrink-0 flex items-center gap-0.5"
+                                >
+                                  <span className="material-symbols-outlined text-[10px]">repeat</span>
+                                  <span>Recorrente</span>
+                                </Badge>
+                              )}
                             </div>
                             <span className="text-[11px] text-[#737373]">
                               {horaFormatada} • {t.accounts?.name || "Conta Padrão"} {t.payment_method ? `(${t.payment_method})` : ""}

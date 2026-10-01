@@ -354,8 +354,34 @@ export interface ItemExtrato {
   installment_total?: number | null;
   installment_group_id?: string | null;
   observation?: string | null;
+  is_recurring?: boolean;
   categories?: { id: number; name: string } | null;
   accounts?: { id: string; name: string; type: string } | null;
+}
+
+export interface RecorrenciaMesItem {
+  id: string;
+  description: string;
+  total_amount: number;
+  day_of_month: number;
+  dataEfetivaFormatada: string;
+  entry_type: 'expense' | 'income';
+  income_type?: 'salary' | 'freelance' | 'benefit' | 'other' | null;
+  weekend_rule?: 'anticipate' | 'postpone' | 'exact';
+  account_id?: string | null;
+  account_name?: string | null;
+  category_id?: number | null;
+  category_name?: string | null;
+  payment_method?: string | null;
+  status: 'realizada' | 'prevista';
+}
+
+export interface TotaisRecorrentesMes {
+  totalEntradasPrevistas: number;
+  totalSaidasPrevistas: number;
+  totalEntradasRealizadas: number;
+  totalSaidasRealizadas: number;
+  saldoLiquidoRecorrente: number;
 }
 
 export interface ExtratoResponse {
@@ -370,6 +396,8 @@ export interface ExtratoResponse {
     liquidoNoMes: number;
     totalLancamentos: number;
     itens: ItemExtrato[];
+    recorrencias?: RecorrenciaMesItem[];
+    totaisRecorrentes?: TotaisRecorrentesMes;
   };
   mensagem?: string;
 }
@@ -1107,6 +1135,28 @@ export async function listarRendasRecorrentes(
   tipo: 'expense' | 'income' = 'income'
 ): Promise<{ sucesso: boolean; dados: RendaRecorrenteItem[] }> {
   const res = await fetch(`${API_BASE_URL}/api/recurring?type=${tipo}`, {
+    method: 'GET',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.mensagem || `Erro ao listar recorrências: ${res.status}`);
+  }
+
+  return res.json();
+}
+
+/**
+ * Lista todas as recorrências cadastradas (receitas e despesas)
+ */
+export async function listarTodasRecorrencias(
+  tipo?: 'expense' | 'income'
+): Promise<{ sucesso: boolean; dados: RendaRecorrenteItem[] }> {
+  const query = tipo ? `?type=${tipo}` : '';
+  const res = await fetch(`${API_BASE_URL}/api/recurring${query}`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',
