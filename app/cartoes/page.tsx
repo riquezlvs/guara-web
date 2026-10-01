@@ -2,11 +2,14 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { obterCartoes, excluirCartao, CartaoItem, obterPosicaoConsolidada, obterDashboard } from "@/lib/api";
+import { obterCartoes, excluirCartao, CartaoItem, CicloFaturaItem, obterPosicaoConsolidada, obterDashboard } from "@/lib/api";
+import { ModalPagarFatura } from "@/components/cartoes/modal-pagar-fatura";
 
 export default function CartoesPage() {
   const [cartoes, setCartoes] = useState<CartaoItem[]>([]);
   const [cartaoSelecionadoId, setCartaoSelecionadoId] = useState<string | null>(null);
+  const [cicloSelecionadoId, setCicloSelecionadoId] = useState<string | null>(null);
+  const [modalPagarAberto, setModalPagarAberto] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [modalExcluirAberto, setModalExcluirAberto] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -358,7 +361,10 @@ export default function CartoesPage() {
                   return (
                     <div
                       key={card.id}
-                      onClick={() => setCartaoSelecionadoId(card.id)}
+                      onClick={() => {
+                        setCartaoSelecionadoId(card.id);
+                        setCicloSelecionadoId(null);
+                      }}
                       className={`snap-center shrink-0 w-[84vw] max-w-[340px] rounded-[24px] p-5 relative overflow-hidden flex flex-col justify-between aspect-[1.58/1] cursor-pointer transition-all duration-300 ${
                         isSelected
                           ? isDark
@@ -496,164 +502,300 @@ export default function CartoesPage() {
               </div>
             </section>
 
-            {/* Invoice Breakdown Card */}
-            {cartaoAtual && (
-              <section className="w-full rounded-[24px] bg-white p-5 shadow-[0_0_0_1px_rgba(229,229,229,1),0_2px_8px_rgba(0,0,0,0.03)] flex flex-col gap-3">
-                {/* Invoice Status Pill & Header */}
-                <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[18px] bg-[#fafafa] shadow-[0_0_0_1px_rgba(229,229,229,1)] text-[11px] text-[#0a0a0a]">
-                    <span className="w-1.5 h-1.5 rounded-full bg-[#e7000b] animate-pulse"></span>
-                    {cartaoAtual.card_type === "debit"
-                      ? "Cartão de Débito • Saldo em Conta"
-                      : `Fatura Aberta • Fecha dia ${cartaoAtual.closing_day}`}
-                  </span>
-                  <span className="text-[12px] text-[#737373]">
-                    {cartaoAtual.card_type === "debit"
-                      ? "Sem fechamento de fatura"
-                      : cartaoAtual.due_day
-                      ? `Vence dia ${cartaoAtual.due_day}`
-                      : "Vence em breve"}
-                  </span>
-                </div>
+            {/* Ciclos de Fatura & Detalhamento da Fatura Selecionada */}
+            {cartaoAtual && (() => {
+              const faturasDoCartao = cartaoAtual.faturas || [];
+              const faturaFechadaPendente = faturasDoCartao.find((f) => f.status === 'fechada' && f.valorFatura > 0);
+              const faturaAberta = faturasDoCartao.find((f) => f.status === 'aberta' || f.status === 'parcial');
+              const faturaPadrao = faturaFechadaPendente || faturaAberta || faturasDoCartao[0];
+              const faturaAtiva = faturasDoCartao.find((f) => f.id === cicloSelecionadoId) || faturaPadrao;
+              const valorFaturaExibida = faturaAtiva ? faturaAtiva.valorFatura : (cartaoAtual.faturaAtual || 0);
+              const itensExibidos = faturaAtiva?.itens || cartaoAtual.itensFatura || [];
+              const isPaga = faturaAtiva?.status === 'paga';
+              const isFechada = faturaAtiva?.status === 'fechada';
+              const isFutura = faturaAtiva?.status === 'futura';
+              const isParcial = faturaAtiva?.status === 'parcial';
 
-                {/* Invoice Amount */}
-                <div className="flex flex-col gap-0.5">
-                  <span className="text-[11px] uppercase tracking-wider text-[#737373]">
-                    {cartaoAtual.card_type === "debit" ? "Total Debitado no Ciclo" : "Valor Atual da Fatura"}
-                  </span>
-                  <div className="flex items-baseline gap-1.5">
-                    <span className="text-[32px] font-bold tracking-tight text-[#0a0a0a]">
-                      R$ {formatarMoeda(cartaoAtual.faturaAtual)}
-                    </span>
-                  </div>
-                </div>
+              return (
+                <>
+                  {/* Seletor de Ciclos de Faturas (Fatura Fechada, Atual e Próximas Faturas) */}
+                  {faturasDoCartao.length > 0 && cartaoAtual.card_type !== "debit" && (
+                    <section className="flex flex-col gap-1.5">
+                      <div className="flex items-center justify-between px-1">
+                        <span className="text-[11px] uppercase tracking-wider text-[#737373] font-medium">
+                          Faturas &amp; Próximos Meses
+                        </span>
+                        <span className="text-[11px] text-[#737373]">
+                          {faturasDoCartao.length} períodos
+                        </span>
+                      </div>
+                      <div className="flex gap-2 overflow-x-auto pb-1 -mx-4 px-4 scrollbar-none snap-x">
+                        {faturasDoCartao.map((f) => {
+                          const isSelected = (faturaAtiva?.id === f.id);
+                          const fPaga = f.status === "paga";
+                          const fFechada = f.status === "fechada";
+                          const fAberta = f.status === "aberta";
 
-                {/* Previsão de Renda Antes do Fechamento */}
-                {safeSummary && (safeSummary.projectedIncomes ?? 0) > 0 && cartaoAtual.card_type !== "debit" && (
-                  <div className="p-3 rounded-2xl bg-emerald-50/90 border border-emerald-200/80 flex items-start gap-2.5 text-emerald-950">
-                    <span className="material-symbols-outlined text-[18px] text-emerald-600 mt-0.5 shrink-0">
-                      event_upcoming
-                    </span>
-                    <div className="flex flex-col text-[12px] leading-tight gap-0.5">
-                      <span className="font-semibold text-emerald-900">
-                        Recebimento agendado antes do fechamento
+                          return (
+                            <button
+                              key={f.id}
+                              type="button"
+                              onClick={() => setCicloSelecionadoId(f.id)}
+                              className={`snap-start shrink-0 px-3.5 py-2 rounded-[18px] text-[12px] font-medium transition-all flex items-center gap-2 cursor-pointer ${
+                                isSelected
+                                  ? "bg-[#0a0a0a] text-white shadow-xs"
+                                  : "bg-white text-[#737373] border border-black/5 hover:text-[#0a0a0a] hover:bg-[#fafafa]"
+                              }`}
+                            >
+                              <span>{f.rotulo}</span>
+                              <span
+                                className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${
+                                  isSelected
+                                    ? "bg-white/20 text-white"
+                                    : fPaga
+                                    ? "bg-emerald-50 text-emerald-700"
+                                    : fFechada
+                                    ? "bg-rose-50 text-rose-700"
+                                    : fAberta
+                                    ? "bg-sky-50 text-sky-700"
+                                    : "bg-neutral-100 text-neutral-800"
+                                }`}
+                              >
+                                {fPaga ? "Paga" : `R$ ${formatarMoeda(f.valorFatura)}`}
+                              </span>
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  )}
+
+                  {/* Invoice Breakdown Card */}
+                  <section className="w-full rounded-[24px] bg-white p-5 shadow-[0_0_0_1px_rgba(229,229,229,1),0_2px_8px_rgba(0,0,0,0.03)] flex flex-col gap-3">
+                    {/* Invoice Status Pill & Header */}
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-[18px] bg-[#fafafa] shadow-[0_0_0_1px_rgba(229,229,229,1)] text-[11px] text-[#0a0a0a]">
+                        <span
+                          className={`w-1.5 h-1.5 rounded-full ${
+                            isPaga
+                              ? "bg-emerald-500"
+                              : isFechada
+                              ? "bg-rose-500 animate-pulse"
+                              : isFutura
+                              ? "bg-neutral-400"
+                              : isParcial
+                              ? "bg-amber-500"
+                              : "bg-sky-500"
+                          }`}
+                        ></span>
+                        {cartaoAtual.card_type === "debit"
+                          ? "Cartão de Débito • Saldo em Conta"
+                          : isPaga
+                          ? "Fatura Paga • Quitada"
+                          : isFechada
+                          ? `Fatura Fechada • Vence dia ${cartaoAtual.due_day || 10}`
+                          : isFutura
+                          ? `Próxima Fatura (${faturaAtiva?.rotulo})`
+                          : isParcial
+                          ? `Parcialmente Paga • Restam R$ ${formatarMoeda(valorFaturaExibida)}`
+                          : `Fatura Aberta • Fecha dia ${cartaoAtual.closing_day}`}
                       </span>
-                      <span className="text-emerald-800">
-                        +R$ {formatarMoeda(safeSummary.projectedIncomes)} previsto(s) até o fechamento (dia {cartaoAtual.closing_day || safeSummary.targetClosingDay}). Saldo projetado no fechamento:{" "}
-                        <strong className="font-bold text-emerald-950">
-                          R$ {formatarMoeda(safeSummary.projectedSafeToSpend ?? safeSummary.effectiveSafeToSpend ?? 0)}
-                        </strong>.
+                      <span className="text-[12px] text-[#737373]">
+                        {cartaoAtual.card_type === "debit"
+                          ? "Sem fechamento de fatura"
+                          : cartaoAtual.due_day
+                          ? `Vence dia ${cartaoAtual.due_day}`
+                          : "Vence em breve"}
                       </span>
                     </div>
-                  </div>
-                )}
 
-                {/* Limit Usage Bar */}
-                <div className="flex flex-col gap-2 pt-1">
-                  <div className="w-full h-2 rounded-full bg-[#eeeeee] overflow-hidden p-0.5">
-                    <div
-                      className="h-full rounded-full bg-[#0a0a0a] transition-all duration-500"
-                      style={{
-                        width: `${Math.min(100, Math.max(2, cartaoAtual.percentualUtilizado || 0))}%`,
-                      }}
-                    ></div>
-                  </div>
-                  <div className="flex items-center justify-between text-[12px]">
-                    <span className="text-[#0a0a0a] font-medium">
-                      R$ {formatarMoeda(cartaoAtual.faturaAtual)} utilizados{" "}
-                      <span className="text-[#737373] font-normal">
-                        ({cartaoAtual.percentualUtilizado || 0}%)
+                    {/* Invoice Amount */}
+                    <div className="flex flex-col gap-0.5">
+                      <span className="text-[11px] uppercase tracking-wider text-[#737373]">
+                        {cartaoAtual.card_type === "debit"
+                          ? "Total Debitado no Ciclo"
+                          : faturaAtiva
+                          ? `Valor da Fatura de ${faturaAtiva.rotulo}`
+                          : "Valor Atual da Fatura"}
                       </span>
-                    </span>
-                    <span className="text-[#737373]">
-                      R$ {formatarMoeda(cartaoAtual.limiteDisponivel)} livre
-                    </span>
-                  </div>
-                </div>
-              </section>
-            )}
+                      <div className="flex items-baseline gap-1.5">
+                        <span className="text-[32px] font-bold tracking-tight text-[#0a0a0a]">
+                          R$ {formatarMoeda(valorFaturaExibida)}
+                        </span>
+                      </div>
+                      {faturaAtiva && (faturaAtiva.totalPago > 0 || isPaga) && (
+                        <span className="text-[11.5px] text-[#737373]">
+                          Total em compras: R$ {formatarMoeda(faturaAtiva.totalCompras)} • Pago: R$ {formatarMoeda(faturaAtiva.totalPago)}
+                        </span>
+                      )}
+                    </div>
 
-            {/* AI Predictive Insight (Guará IA) */}
-            <section className="rounded-[24px] bg-white p-4 shadow-[0_0_0_1px_rgba(229,229,229,1),0_1px_4px_rgba(0,0,0,0.02)] flex items-start gap-3">
-              <div className="w-8 h-8 rounded-full bg-[#0a0a0a] text-white flex items-center justify-center shrink-0 mt-0.5">
-                <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
-              </div>
-              <div className="flex flex-col gap-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[13px] font-semibold text-[#0a0a0a]">Projeção Guará IA</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-[6px] bg-[#f5f5f5] text-[#737373] font-mono">
-                    ESTIMATIVA
-                  </span>
-                </div>
-                <p className="text-[13px] text-[#737373] leading-relaxed">
-                  Com base nos seus gastos recorrentes e histórico recente, estimamos o fechamento desta fatura em{" "}
-                  <strong className="text-[#0a0a0a] font-medium">
-                    R$ {formatarMoeda((cartaoAtual?.faturaAtual || 0) * 1.15 || 0)}
-                  </strong>{" "}
-                  — seguro dentro do seu limite Safe-to-Spend.
-                </p>
-              </div>
-            </section>
+                    {/* Botão Bancário: Pagar Fatura com Saldo do Bolso */}
+                    {cartaoAtual.card_type !== "debit" && (
+                      <button
+                        type="button"
+                        onClick={() => setModalPagarAberto(true)}
+                        disabled={valorFaturaExibida <= 0}
+                        className="w-full mt-1 h-11 rounded-[18px] bg-[#0a0a0a] text-white text-[13px] font-medium flex items-center justify-center gap-2 hover:bg-neutral-800 active:scale-95 transition-all shadow-xs disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer"
+                      >
+                        <span className="material-symbols-outlined text-[18px]">
+                          {valorFaturaExibida <= 0 ? "check_circle" : "payments"}
+                        </span>
+                        <span>
+                          {valorFaturaExibida <= 0
+                            ? "Fatura em dia / Quitada"
+                            : `Pagar Fatura com Saldo (R$ ${formatarMoeda(valorFaturaExibida)})`}
+                        </span>
+                      </button>
+                    )}
 
-            {/* Recent Transactions for Current Card */}
-            <section className="flex flex-col gap-2">
-              <div className="flex items-center justify-between px-1">
-                <span className="text-[11px] uppercase tracking-wider text-[#737373]">
-                  Últimos no {cartaoAtual?.name || "Cartão"} {cartaoAtual?.last_four_digits ? `(${cartaoAtual.last_four_digits})` : ""}
-                </span>
-                <span className="text-[12px] text-[#737373]">Ciclo Atual</span>
-              </div>
-              <div className="w-full rounded-[24px] bg-white shadow-[0_0_0_1px_rgba(229,229,229,1)] overflow-hidden">
-                {cartaoAtual?.itensFatura && cartaoAtual.itensFatura.length > 0 ? (
-                  cartaoAtual.itensFatura.map((item, idx) => (
-                    <div
-                      key={item.display_id || idx}
-                      className={`p-3.5 flex items-center justify-between hover:bg-[#fafafa] transition-colors ${
-                        idx < cartaoAtual.itensFatura.length - 1 ? "shadow-[0_1px_0_rgba(229,229,229,1)]" : ""
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="w-9 h-9 rounded-full bg-[#f5f5f5] flex items-center justify-center text-[#0a0a0a]">
-                          <span className="material-symbols-outlined text-[18px]">
-                            {item.description.toLowerCase().includes("mercado")
-                              ? "shopping_cart"
-                              : item.description.toLowerCase().includes("droga") || item.description.toLowerCase().includes("farma")
-                              ? "local_pharmacy"
-                              : item.description.toLowerCase().includes("restaurante") || item.description.toLowerCase().includes("almoço")
-                              ? "restaurant"
-                              : "credit_card"}
+                    {/* Previsão de Renda Antes do Fechamento */}
+                    {safeSummary && (safeSummary.projectedIncomes ?? 0) > 0 && cartaoAtual.card_type !== "debit" && (
+                      <div className="p-3 rounded-2xl bg-emerald-50/90 border border-emerald-200/80 flex items-start gap-2.5 text-emerald-950">
+                        <span className="material-symbols-outlined text-[18px] text-emerald-600 mt-0.5 shrink-0">
+                          event_upcoming
+                        </span>
+                        <div className="flex flex-col text-[12px] leading-tight gap-0.5">
+                          <span className="font-semibold text-emerald-900">
+                            Recebimento agendado antes do fechamento
                           </span>
-                        </div>
-                        <div className="flex flex-col">
-                          <span className="text-[14px] text-[#0a0a0a] font-medium truncate max-w-[200px]">
-                            {item.description}
-                          </span>
-                          <span className="text-[12px] text-[#737373]">
-                            {item.occurred_at ? new Date(item.occurred_at).toLocaleDateString("pt-BR") : "Recente"}
+                          <span className="text-emerald-800">
+                            +R$ {formatarMoeda(safeSummary.projectedIncomes)} previsto(s) até o fechamento (dia {cartaoAtual.closing_day || safeSummary.targetClosingDay}). Saldo projetado no fechamento:{" "}
+                            <strong className="font-bold text-emerald-950">
+                              R$ {formatarMoeda(safeSummary.projectedSafeToSpend ?? safeSummary.effectiveSafeToSpend ?? 0)}
+                            </strong>.
                           </span>
                         </div>
                       </div>
-                      <span className="text-[14px] text-[#0a0a0a] font-semibold">
-                        -R$ {formatarMoeda(item.total_amount)}
+                    )}
+
+                    {/* Limit Usage Bar */}
+                    <div className="flex flex-col gap-2 pt-1">
+                      <div className="w-full h-2 rounded-full bg-[#eeeeee] overflow-hidden p-0.5">
+                        <div
+                          className="h-full rounded-full bg-[#0a0a0a] transition-all duration-500"
+                          style={{
+                            width: `${Math.min(100, Math.max(2, cartaoAtual.percentualUtilizado || 0))}%`,
+                          }}
+                        ></div>
+                      </div>
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="text-[#0a0a0a] font-medium">
+                          R$ {formatarMoeda(cartaoAtual.faturaAtual)} utilizados{" "}
+                          <span className="text-[#737373] font-normal">
+                            ({cartaoAtual.percentualUtilizado || 0}%)
+                          </span>
+                        </span>
+                        <span className="text-[#737373]">
+                          R$ {formatarMoeda(cartaoAtual.limiteDisponivel)} livre
+                        </span>
+                      </div>
+                    </div>
+                  </section>
+
+                  {/* AI Predictive Insight (Guará IA) */}
+                  <section className="rounded-[24px] bg-white p-4 shadow-[0_0_0_1px_rgba(229,229,229,1),0_1px_4px_rgba(0,0,0,0.02)] flex items-start gap-3">
+                    <div className="w-8 h-8 rounded-full bg-[#0a0a0a] text-white flex items-center justify-center shrink-0 mt-0.5">
+                      <span className="material-symbols-outlined text-[16px]">auto_awesome</span>
+                    </div>
+                    <div className="flex flex-col gap-1">
+                      <div className="flex items-center gap-2">
+                        <span className="text-[13px] font-semibold text-[#0a0a0a]">Projeção Guará IA</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-[6px] bg-[#f5f5f5] text-[#737373] font-mono">
+                          ESTIMATIVA
+                        </span>
+                      </div>
+                      <p className="text-[13px] text-[#737373] leading-relaxed">
+                        Com base nos seus gastos recorrentes e histórico recente, estimamos o fechamento desta fatura em{" "}
+                        <strong className="text-[#0a0a0a] font-medium">
+                          R$ {formatarMoeda((cartaoAtual?.faturaAtual || 0) * 1.15 || 0)}
+                        </strong>{" "}
+                        — seguro dentro do seu limite Safe-to-Spend.
+                      </p>
+                    </div>
+                  </section>
+
+                  {/* Lançamentos do Ciclo Selecionado */}
+                  <section className="flex flex-col gap-2">
+                    <div className="flex items-center justify-between px-1">
+                      <span className="text-[11px] uppercase tracking-wider text-[#737373]">
+                        Lançamentos em {faturaAtiva?.rotulo || "Fatura Atual"} {cartaoAtual?.last_four_digits ? `(${cartaoAtual.last_four_digits})` : ""}
+                      </span>
+                      <span className="text-[12px] text-[#737373]">
+                        {itensExibidos.length} lançamento{itensExibidos.length !== 1 ? "s" : ""}
                       </span>
                     </div>
-                  ))
-                ) : (
-                  <div className="p-6 text-center text-[#737373] text-[13px]">
-                    Nenhum lançamento registrado nesta fatura ainda.
-                  </div>
-                )}
+                    <div className="w-full rounded-[24px] bg-white shadow-[0_0_0_1px_rgba(229,229,229,1)] overflow-hidden">
+                      {itensExibidos && itensExibidos.length > 0 ? (
+                        itensExibidos.map((item, idx) => {
+                          const isPagamento = Boolean(item.is_payment);
+                          return (
+                            <div
+                              key={item.display_id || idx}
+                              className={`p-3.5 flex items-center justify-between hover:bg-[#fafafa] transition-colors ${
+                                idx < itensExibidos.length - 1 ? "shadow-[0_1px_0_rgba(229,229,229,1)]" : ""
+                              } ${isPagamento ? "bg-emerald-50/50" : ""}`}
+                            >
+                              <div className="flex items-center gap-3">
+                                <div
+                                  className={`w-9 h-9 rounded-full flex items-center justify-center ${
+                                    isPagamento
+                                      ? "bg-emerald-100 text-emerald-700"
+                                      : "bg-[#f5f5f5] text-[#0a0a0a]"
+                                  }`}
+                                >
+                                  <span className="material-symbols-outlined text-[18px]">
+                                    {isPagamento
+                                      ? "check_circle"
+                                      : item.description.toLowerCase().includes("mercado")
+                                      ? "shopping_cart"
+                                      : item.description.toLowerCase().includes("droga") || item.description.toLowerCase().includes("farma")
+                                      ? "local_pharmacy"
+                                      : item.description.toLowerCase().includes("restaurante") || item.description.toLowerCase().includes("almoço")
+                                      ? "restaurant"
+                                      : "credit_card"}
+                                  </span>
+                                </div>
+                                <div className="flex flex-col">
+                                  <span className={`text-[14px] font-medium truncate max-w-[200px] ${
+                                    isPagamento ? "text-emerald-900" : "text-[#0a0a0a]"
+                                  }`}>
+                                    {item.description}
+                                  </span>
+                                  <span className="text-[12px] text-[#737373]">
+                                    {item.occurred_at ? new Date(item.occurred_at).toLocaleDateString("pt-BR") : "Recente"}
+                                  </span>
+                                </div>
+                              </div>
+                              <span
+                                className={`text-[14px] font-semibold ${
+                                  isPagamento ? "text-emerald-600" : "text-[#0a0a0a]"
+                                }`}
+                              >
+                                {isPagamento ? "+" : "-"}R$ {formatarMoeda(item.total_amount)}
+                              </span>
+                            </div>
+                          );
+                        })
+                      ) : (
+                        <div className="p-6 text-center text-[#737373] text-[13px]">
+                          Nenhum lançamento registrado nesta fatura ainda.
+                        </div>
+                      )}
 
-                {/* Footer Action */}
-                <Link
-                  className="w-full py-3 px-4 bg-[#fafafa] flex items-center justify-center gap-1.5 text-[13px] font-medium text-[#737373] hover:text-[#0a0a0a] transition-colors shadow-[0_-1px_0_rgba(229,229,229,1)]"
-                  href="/extrato"
-                >
-                  <span>Ver todos os lançamentos no Extrato</span>
-                  <span className="material-symbols-outlined text-[16px]">chevron_right</span>
-                </Link>
-              </div>
-            </section>
+                      {/* Footer Action */}
+                      <Link
+                        className="w-full py-3 px-4 bg-[#fafafa] flex items-center justify-center gap-1.5 text-[13px] font-medium text-[#737373] hover:text-[#0a0a0a] transition-colors shadow-[0_-1px_0_rgba(229,229,229,1)]"
+                        href="/extrato"
+                      >
+                        <span>Ver todos os lançamentos no Extrato</span>
+                        <span className="material-symbols-outlined text-[16px]">chevron_right</span>
+                      </Link>
+                    </div>
+                  </section>
+                </>
+              );
+            })()}
           </>
         )}
       </div>
@@ -708,6 +850,21 @@ export default function CartoesPage() {
           </div>
         </div>
       )}
+
+      {/* Modal de Pagamento de Fatura com Saldo */}
+      {modalPagarAberto && cartaoAtual && (
+        <ModalPagarFatura
+          aberto={modalPagarAberto}
+          aoFechar={() => setModalPagarAberto(false)}
+          cartao={cartaoAtual}
+          faturaAlvo={cartaoAtual.faturas?.find((f) => f.id === cicloSelecionadoId) || null}
+          aoSucesso={(msg) => {
+            setMensagemAviso(msg);
+            carregarCartoes();
+          }}
+        />
+      )}
     </main>
   );
 }
+

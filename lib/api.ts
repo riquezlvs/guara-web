@@ -425,6 +425,28 @@ export async function obterExtrato(mesAno?: string, id?: string | number): Promi
   return res.json();
 }
 
+export interface CicloFaturaItem {
+  id: string;
+  rotulo: string;
+  mesReferencia: string;
+  status: 'fechada' | 'aberta' | 'paga' | 'parcial' | 'futura';
+  inicio: string;
+  fechamento: string;
+  vencimento?: string;
+  totalCompras: number;
+  totalPago: number;
+  valorFatura: number;
+  itens: Array<{
+    display_id: number;
+    description: string;
+    total_amount: number;
+    occurred_at: string;
+    installment_number?: number | null;
+    installment_total?: number | null;
+    is_payment?: boolean;
+  }>;
+}
+
 export interface CartaoItem {
   id: string;
   name: string;
@@ -440,6 +462,8 @@ export interface CartaoItem {
   faturaAtual: number;
   limiteDisponivel: number;
   percentualUtilizado: number;
+  totalPagoCiclo?: number;
+  statusFatura?: 'fechada' | 'aberta' | 'paga' | 'parcial' | 'futura';
   periodo: {
     inicio: string;
     fim: string;
@@ -452,7 +476,9 @@ export interface CartaoItem {
     occurred_at: string;
     installment_number?: number | null;
     installment_total?: number | null;
+    is_payment?: boolean;
   }>;
+  faturas?: CicloFaturaItem[];
 }
 
 export interface NovoCartaoInput {
@@ -530,6 +556,49 @@ export async function excluirCartao(idOuNome: string): Promise<{ sucesso: boolea
   }
 
   return res.json();
+}
+
+export interface PagamentoFaturaPayload {
+  cardId: string;
+  accountId: string;
+  amount: number;
+  paidAt?: string;
+}
+
+export interface ResultadoPagamentoFaturaResponse {
+  sucesso: boolean;
+  mensagem: string;
+  authCode?: string;
+  cardId?: string;
+  cardName?: string;
+  accountId?: string;
+  accountName?: string;
+  amount?: number;
+  novoSaldoConta?: number;
+  novaFaturaAtual?: number;
+  novoLimiteDisponivel?: number;
+}
+
+/**
+ * Paga a fatura de um cartão debitando diretamente do saldo de uma conta/bolso
+ */
+export async function pagarFaturaCartao(
+  payload: PagamentoFaturaPayload
+): Promise<ResultadoPagamentoFaturaResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/cards/pay-invoice`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json.mensagem || `Erro ao pagar fatura: ${res.status}`);
+  }
+
+  return json;
 }
 
 export interface AlocacaoItem {
