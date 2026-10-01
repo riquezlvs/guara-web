@@ -301,6 +301,21 @@ export default function NovaRendaRecorrentePage() {
                 </button>
 
                 <button
+                  onClick={() => handleDaySelect("last-business")}
+                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-[16px] transition-all cursor-pointer border ${
+                    !isCustomDay && scheduledDay === "last-business"
+                      ? "bg-black text-white border-black"
+                      : "bg-[#f9f9f9] text-[#0a0a0a] border-black/[0.06] hover:bg-[#f0f0f0]"
+                  }`}
+                  type="button"
+                >
+                  <span className="text-[13px] font-medium">Final do mês</span>
+                  <span className="material-symbols-outlined text-[18px]">
+                    {!isCustomDay && scheduledDay === "last-business" ? "check_circle" : "radio_button_unchecked"}
+                  </span>
+                </button>
+
+                <button
                   onClick={() => handleDaySelect("5th-business")}
                   className={`flex items-center justify-between px-3.5 py-2.5 rounded-[16px] transition-all cursor-pointer border ${
                     !isCustomDay && scheduledDay === "5th-business"
@@ -317,14 +332,14 @@ export default function NovaRendaRecorrentePage() {
 
                 <button
                   onClick={() => setIsCustomDay(true)}
-                  className={`flex items-center justify-between px-3.5 py-2.5 rounded-[16px] transition-all cursor-pointer border ${
+                  className={`col-span-2 flex items-center justify-between px-3.5 py-2.5 rounded-[16px] transition-all cursor-pointer border ${
                     isCustomDay
                       ? "bg-black text-white border-black"
                       : "bg-[#f9f9f9] text-[#0a0a0a] border-black/[0.06] hover:bg-[#f0f0f0]"
                   }`}
                   type="button"
                 >
-                  <span className="text-[13px] font-medium">Outro dia (1-31)</span>
+                  <span className="text-[13px] font-medium">+ Outro dia (Personalizar 1-31)</span>
                   <span className="material-symbols-outlined text-[18px]">
                     {isCustomDay ? "check_circle" : "edit_calendar"}
                   </span>

@@ -25,6 +25,9 @@ export function ManualTransactionModal({
   // Tipo principal: Despesa ou Receita
   const [entryType, setEntryType] = useState<"expense" | "income">("expense");
 
+  // Tag de recebimento ativa
+  const [selectedIncomeTag, setSelectedIncomeTag] = useState<string>("salary");
+
   // Valor e descrição
   const [amountStr, setAmountStr] = useState("");
   const [description, setDescription] = useState("");
@@ -46,9 +49,10 @@ export function ManualTransactionModal({
   const [selectedAccountId, setSelectedAccountId] = useState<string>("");
   const [installmentTotal, setInstallmentTotal] = useState<number>(1);
 
-  // Recorrência (tanto para Despesa Fixa quanto para Receita Recorrente)
+  // Recorrência
   const [isRecurring, setIsRecurring] = useState(false);
-  const [dayOfMonth, setDayOfMonth] = useState("5");
+  const [dayOption, setDayOption] = useState<"5" | "20" | "last-day" | "5th-business" | "custom">("5");
+  const [customDay, setCustomDay] = useState<string>("5");
   const [weekendRule, setWeekendRule] = useState<"anticipate" | "postpone">("anticipate");
   const [incomeType, setIncomeType] = useState<"salary" | "freelance" | "benefit" | "other">("salary");
 
@@ -92,18 +96,30 @@ export function ManualTransactionModal({
 
   if (!isOpen) return null;
 
+  // Formatação monetária em tempo real (máscara de moeda BRL)
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const val = e.target.value.replace(/[^0-9.,]/g, "").replace(",", ".");
-    setAmountStr(val);
+    const digits = e.target.value.replace(/\D/g, "");
+    if (!digits) {
+      setAmountStr("");
+      return;
+    }
+    const num = parseFloat(digits) / 100;
+    setAmountStr(num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+  };
+
+  const parseValorNumerico = (str: string): number => {
+    const clean = str.replace(/\./g, "").replace(",", ".");
+    return parseFloat(clean) || 0;
   };
 
   const handlePresetIncome = (tipo: "salary" | "freelance" | "benefit" | "advance" | "other") => {
+    setSelectedIncomeTag(tipo);
     switch (tipo) {
       case "salary":
-        setDescription("Salário");
+        setDescription("Salário Principal");
         setIncomeType("salary");
         setIsRecurring(true);
-        setDayOfMonth("5");
+        setDayOption("5");
         setWeekendRule("anticipate");
         setPaymentMethod("pix");
         break;
@@ -117,7 +133,7 @@ export function ManualTransactionModal({
         setDescription("Vale-Refeição (VR/VA)");
         setIncomeType("benefit");
         setIsRecurring(true);
-        setDayOfMonth("1");
+        setDayOption("5");
         setWeekendRule("anticipate");
         setPaymentMethod("pix");
         break;
@@ -136,7 +152,7 @@ export function ManualTransactionModal({
   };
 
   const handleProceed = () => {
-    const valorNumerico = parseFloat(amountStr);
+    const valorNumerico = parseValorNumerico(amountStr);
     if (isNaN(valorNumerico) || valorNumerico <= 0) {
       alert("Por favor, informe um valor válido para o lançamento.");
       return;
@@ -148,14 +164,33 @@ export function ManualTransactionModal({
       return;
     }
 
-    const diaNum = parseInt(dayOfMonth, 10);
-    if (isRecurring && (isNaN(diaNum) || diaNum < 1 || diaNum > 31)) {
-      alert("Por favor, informe um dia do mês válido (entre 1 e 31) para a recorrência.");
-      return;
+    // Resolução do dia do mês
+    let diaNum = 5;
+    if (isRecurring) {
+      if (dayOption === "5") diaNum = 5;
+      else if (dayOption === "20") diaNum = 20;
+      else if (dayOption === "last-day") diaNum = 28;
+      else if (dayOption === "5th-business") diaNum = 7;
+      else if (dayOption === "custom") {
+        const parsed = parseInt(customDay, 10);
+        if (isNaN(parsed) || parsed < 1 || parsed > 31) {
+          alert("Por favor, informe um dia do mês válido (entre 1 e 31) para a recorrência.");
+          return;
+        }
+        diaNum = parsed;
+      }
     }
 
+    // Resolução de Categoria:
+    // Para despesas: categoria selecionada pelo usuário
+    // Para receitas: busca categoria padrão 'Receitas' ou usa a primeira disponível
     const selectedCategory = categories.find((c) => c.id === categoryId);
-    const categoryName = selectedCategory?.name || (entryType === "income" ? "Renda" : "Geral");
+    const defaultIncomeCategory = categories.find((c) =>
+      c.name.toLowerCase().includes("receita") || c.name.toLowerCase().includes("renda")
+    ) || categories[0];
+
+    const categoryIdFinal = entryType === "income" ? (defaultIncomeCategory?.id ?? 1) : categoryId;
+    const categoryNameFinal = entryType === "income" ? (defaultIncomeCategory?.name || "Receitas") : (selectedCategory?.name || "Geral");
 
     const isCredit = entryType === "expense" && paymentMethod === "credit_card";
     const selectedCard = isCredit ? cards.find((c) => c.id === selectedCardId) : null;
@@ -193,8 +228,8 @@ export function ManualTransactionModal({
       entryType,
       description: desc,
       totalAmount: valorNumerico,
-      categoryId,
-      categoryName,
+      categoryId: categoryIdFinal,
+      categoryName: categoryNameFinal,
       paymentMethod: isCredit ? "credit_card" : paymentMethod,
       paymentMethodLabel: methodLabel,
       cardName,
@@ -289,41 +324,33 @@ export function ManualTransactionModal({
           </button>
         </div>
 
-        {/* Chips de Atalho para Recebimento */}
+        {/* Chips de Atalho para Recebimento com Destaque Visual */}
         {entryType === "income" && (
           <div className="flex flex-col gap-1.5 animate-in fade-in duration-150">
             <span className="text-[11px] font-medium uppercase tracking-wider text-[#737373]">
               Tipo de Entrada Rápida
             </span>
-            <div className="flex items-center gap-1.5 overflow-x-auto pb-1 scrollbar-none">
-              <button
-                type="button"
-                onClick={() => handlePresetIncome("salary")}
-                className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#f5f5f5] hover:bg-black hover:text-white transition-all cursor-pointer text-[#0a0a0a]"
-              >
-                💼 Salário Principal
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePresetIncome("freelance")}
-                className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#f5f5f5] hover:bg-black hover:text-white transition-all cursor-pointer text-[#0a0a0a]"
-              >
-                ⚡ Freelance / Extra
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePresetIncome("benefit")}
-                className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#f5f5f5] hover:bg-black hover:text-white transition-all cursor-pointer text-[#0a0a0a]"
-              >
-                🍽️ Vale-Refeição (VR)
-              </button>
-              <button
-                type="button"
-                onClick={() => handlePresetIncome("advance")}
-                className="shrink-0 px-3 py-1.5 rounded-full text-[12px] font-medium bg-[#f5f5f5] hover:bg-black hover:text-white transition-all cursor-pointer text-[#0a0a0a]"
-              >
-                💰 Adiantamento
-              </button>
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
+              {[
+                { id: "salary", label: "💼 Salário Principal" },
+                { id: "freelance", label: "⚡ Freelance / Extra" },
+                { id: "benefit", label: "🍽️ Vale-Refeição (VR)" },
+                { id: "advance", label: "💰 Adiantamento" },
+                { id: "other", label: "✨ Outro Ganho" },
+              ].map((item) => (
+                <button
+                  key={item.id}
+                  type="button"
+                  onClick={() => handlePresetIncome(item.id as any)}
+                  className={`shrink-0 px-3.5 py-1.5 rounded-full text-[12px] font-medium transition-all cursor-pointer border ${
+                    selectedIncomeTag === item.id
+                      ? "bg-black text-white border-black shadow-xs font-semibold"
+                      : "bg-[#f5f5f5] text-[#737373] hover:text-[#0a0a0a] hover:bg-[#eaeaea] border-black/[0.04]"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              ))}
             </div>
           </div>
         )}
@@ -362,19 +389,75 @@ export function ManualTransactionModal({
             </button>
           </div>
 
+          {/* Opções de Datas Recorrentes Mais Usadas + Personalizar */}
           {isRecurring && (
-            <div className="grid grid-cols-2 gap-2.5 pt-2 border-t border-black/5 animate-in fade-in duration-150">
-              <div className="flex flex-col gap-1">
-                <label className="text-[11px] font-medium text-[#737373]">Dia do Mês (1 a 31)</label>
-                <input
-                  type="number"
-                  min="1"
-                  max="31"
-                  value={dayOfMonth}
-                  onChange={(e) => setDayOfMonth(e.target.value)}
-                  className="h-10 rounded-[14px] bg-white border border-black/10 text-[13px] text-[#0a0a0a] px-3 focus:outline-none focus:ring-1 focus:ring-black"
-                />
+            <div className="flex flex-col gap-3 pt-2.5 border-t border-black/5 animate-in fade-in duration-150">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[11px] uppercase tracking-wider font-semibold text-[#737373]">
+                  Dia do Recebimento Programado
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setDayOption("5")}
+                    className={`py-2 px-2.5 rounded-[14px] text-[12px] font-medium transition-all text-center border cursor-pointer ${
+                      dayOption === "5"
+                        ? "bg-black text-white border-black shadow-xs font-semibold"
+                        : "bg-white text-[#737373] hover:text-[#0a0a0a] border-black/[0.08]"
+                    }`}
+                  >
+                    Todo dia 05
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDayOption("20")}
+                    className={`py-2 px-2.5 rounded-[14px] text-[12px] font-medium transition-all text-center border cursor-pointer ${
+                      dayOption === "20"
+                        ? "bg-black text-white border-black shadow-xs font-semibold"
+                        : "bg-white text-[#737373] hover:text-[#0a0a0a] border-black/[0.08]"
+                    }`}
+                  >
+                    Todo dia 20
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDayOption("last-day")}
+                    className={`py-2 px-2.5 rounded-[14px] text-[12px] font-medium transition-all text-center border cursor-pointer ${
+                      dayOption === "last-day"
+                        ? "bg-black text-white border-black shadow-xs font-semibold"
+                        : "bg-white text-[#737373] hover:text-[#0a0a0a] border-black/[0.08]"
+                    }`}
+                  >
+                    Final do mês
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDayOption("custom")}
+                    className={`py-2 px-2.5 rounded-[14px] text-[12px] font-medium transition-all text-center border cursor-pointer ${
+                      dayOption === "custom"
+                        ? "bg-black text-white border-black shadow-xs font-semibold"
+                        : "bg-white text-[#737373] hover:text-[#0a0a0a] border-black/[0.08]"
+                    }`}
+                  >
+                    + Personalizar
+                  </button>
+                </div>
+
+                {dayOption === "custom" && (
+                  <div className="flex items-center gap-2 pt-1 animate-in fade-in duration-150">
+                    <span className="text-[12px] text-[#737373]">Dia do mês (1 a 31):</span>
+                    <input
+                      type="number"
+                      min="1"
+                      max="31"
+                      value={customDay}
+                      onChange={(e) => setCustomDay(e.target.value)}
+                      className="w-20 h-9 rounded-[12px] bg-white border border-black/15 text-[14px] font-semibold text-center text-[#0a0a0a] focus:outline-none focus:ring-1 focus:ring-black"
+                    />
+                  </div>
+                )}
               </div>
+
               <div className="flex flex-col gap-1">
                 <label className="text-[11px] font-medium text-[#737373]">Regra de Fim de Semana</label>
                 <select
@@ -382,15 +465,15 @@ export function ManualTransactionModal({
                   onChange={(e) => setWeekendRule(e.target.value as "anticipate" | "postpone")}
                   className="h-10 rounded-[14px] bg-white border border-black/10 text-[13px] text-[#0a0a0a] px-2.5 focus:outline-none focus:ring-1 focus:ring-black"
                 >
-                  <option value="anticipate">Antecipar (CLT / Útil)</option>
-                  <option value="postpone">Postergar</option>
+                  <option value="anticipate">Antecipar para o dia útil anterior (CLT)</option>
+                  <option value="postpone">Postergar para o próximo dia útil</option>
                 </select>
               </div>
             </div>
           )}
         </div>
 
-        {/* Valor do Lançamento */}
+        {/* Valor do Lançamento com Máscara Monetária */}
         <div className="flex flex-col gap-1.5 p-4 rounded-[22px] bg-[#fafafa] border border-black/[0.05]">
           <label className="text-[11px] uppercase tracking-wider font-semibold text-[#737373]">
             {entryType === "income" ? "Valor a Receber" : "Valor do Lançamento"}
@@ -426,23 +509,25 @@ export function ManualTransactionModal({
           />
         </div>
 
-        {/* Categoria */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[12px] font-medium text-[#737373]">
-            Categoria
-          </label>
-          <select
-            value={categoryId}
-            onChange={(e) => setCategoryId(Number(e.target.value))}
-            className="h-11 rounded-[16px] bg-[#fafafa] border border-black/[0.08] text-[14px] text-[#0a0a0a] px-3 focus:outline-none focus:ring-1 focus:ring-black"
-          >
-            {categories.map((cat) => (
-              <option key={cat.id} value={cat.id}>
-                {cat.name}
-              </option>
-            ))}
-          </select>
-        </div>
+        {/* Categoria: Exibir SOMENTE quando for Despesa (em receitas é removido para não poluir com categorias irrelevantes) */}
+        {entryType === "expense" && (
+          <div className="flex flex-col gap-1.5 animate-in fade-in duration-150">
+            <label className="text-[12px] font-medium text-[#737373]">
+              Categoria
+            </label>
+            <select
+              value={categoryId}
+              onChange={(e) => setCategoryId(Number(e.target.value))}
+              className="h-11 rounded-[16px] bg-[#fafafa] border border-black/[0.08] text-[14px] text-[#0a0a0a] px-3 focus:outline-none focus:ring-1 focus:ring-black"
+            >
+              {categories.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.name}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* Forma de Pagamento e Conta/Cartão */}
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -518,7 +603,7 @@ export function ManualTransactionModal({
                 <option key={num} value={num}>
                   {num}x de R${" "}
                   {(
-                    (parseFloat(amountStr) || 0) / num
+                    (parseValorNumerico(amountStr) || 0) / num
                   ).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                 </option>
               ))}
