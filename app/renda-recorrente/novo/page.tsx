@@ -11,7 +11,7 @@ export default function NovaRendaRecorrentePage() {
   const [selectedType, setSelectedType] = useState<string>("salary");
 
   // Valor Líquido
-  const [netValue, setNetValue] = useState("6.500,00");
+  const [netValue, setNetValue] = useState("");
 
   // Frequência
   const [frequency, setFrequency] = useState<"monthly" | "biweekly" | "weekly">("monthly");
@@ -223,7 +223,7 @@ export default function NovaRendaRecorrentePage() {
             <div className="flex items-baseline gap-2 py-1">
               <span className="text-[28px] text-[#737373] font-light">R$</span>
               <input
-                className="w-full bg-transparent text-[36px] text-[#0a0a0a] tracking-tight font-bold focus:outline-none"
+                className="w-full bg-transparent text-[36px] text-[#0a0a0a] tracking-tight font-bold focus:outline-none placeholder-[#d4d4d4]"
                 inputMode="decimal"
                 type="text"
                 value={netValue}

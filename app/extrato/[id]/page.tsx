@@ -67,7 +67,9 @@ export default function TransactionDetailsPage() {
           setTransaction({
             ...found,
             note: found.observation || undefined,
-            tags: found.categories?.name ? [`#${found.categories.name}`] : [],
+            tags: (found.tags && Array.isArray(found.tags) && found.tags.length > 0)
+              ? found.tags
+              : (found.categories?.name ? [`#${found.categories.name}`] : []),
             bankId: `DOC-${found.display_id}`,
           });
         }

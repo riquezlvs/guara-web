@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import Link from "next/link";
-import { obterCartoes, excluirCartao, CartaoItem, CicloFaturaItem, obterPosicaoConsolidada, obterDashboard } from "@/lib/api";
+import { obterCartoes, excluirCartao, estornarPagamentoFatura, CartaoItem, CicloFaturaItem, obterPosicaoConsolidada, obterDashboard } from "@/lib/api";
 import { ModalPagarFatura } from "@/components/cartoes/modal-pagar-fatura";
 
 export default function CartoesPage() {
@@ -13,6 +13,14 @@ export default function CartoesPage() {
   const [isLoading, setIsLoading] = useState(true);
   const [modalExcluirAberto, setModalExcluirAberto] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [modalEstornoAberto, setModalEstornoAberto] = useState(false);
+  const [pagamentoParaEstornar, setPagamentoParaEstornar] = useState<{
+    paymentId?: string;
+    amount: number;
+    description: string;
+    cycleRotulo?: string;
+  } | null>(null);
+  const [isEstornando, setIsEstornando] = useState(false);
   const [mensagemAviso, setMensagemAviso] = useState<string | null>(null);
   const [posicaoConsolidada, setPosicaoConsolidada] = useState<{
     totalLiquidBalance: number;
@@ -120,6 +128,28 @@ export default function CartoesPage() {
       setMensagemAviso(err.message || "Erro ao remover cartão.");
     } finally {
       setIsDeleting(false);
+    }
+  };
+
+  const handleEstornarPagamento = async () => {
+    if (!cartaoAtual || !pagamentoParaEstornar) return;
+
+    setIsEstornando(true);
+    try {
+      const resp = await estornarPagamentoFatura({
+        paymentId: pagamentoParaEstornar.paymentId,
+        cardId: cartaoAtual.id,
+      });
+
+      setMensagemAviso(resp.mensagem || "Pagamento estornado com sucesso! Saldo devolvido ao bolso.");
+      setModalEstornoAberto(false);
+      setPagamentoParaEstornar(null);
+      window.dispatchEvent(new CustomEvent("finances:refresh"));
+      await carregarCartoes();
+    } catch (err: any) {
+      setMensagemAviso(err.message || "Erro ao estornar pagamento.");
+    } finally {
+      setIsEstornando(false);
     }
   };
 
@@ -767,13 +797,33 @@ export default function CartoesPage() {
                                   </span>
                                 </div>
                               </div>
-                              <span
-                                className={`text-[14px] font-semibold ${
-                                  isPagamento ? "text-emerald-600" : "text-[#0a0a0a]"
-                                }`}
-                              >
-                                {isPagamento ? "+" : "-"}R$ {formatarMoeda(item.total_amount)}
-                              </span>
+                              <div className="flex items-center gap-2">
+                                <span
+                                  className={`text-[14px] font-semibold ${
+                                    isPagamento ? "text-emerald-600" : "text-[#0a0a0a]"
+                                  }`}
+                                >
+                                  {isPagamento ? "+" : "-"}R$ {formatarMoeda(item.total_amount)}
+                                </span>
+                                {isPagamento && (
+                                  <button
+                                    type="button"
+                                    onClick={() => {
+                                      setPagamentoParaEstornar({
+                                        paymentId: (item as any).payment_id,
+                                        amount: Number(item.total_amount),
+                                        description: item.description,
+                                        cycleRotulo: faturaAtiva?.rotulo,
+                                      });
+                                      setModalEstornoAberto(true);
+                                    }}
+                                    className="p-1.5 rounded-full text-neutral-400 hover:text-rose-600 hover:bg-rose-50 transition-colors cursor-pointer flex items-center justify-center"
+                                    title="Estornar / Desfazer este pagamento"
+                                  >
+                                    <span className="material-symbols-outlined text-[16px]">undo</span>
+                                  </button>
+                                )}
+                              </div>
                             </div>
                           );
                         })
@@ -857,12 +907,78 @@ export default function CartoesPage() {
           aberto={modalPagarAberto}
           aoFechar={() => setModalPagarAberto(false)}
           cartao={cartaoAtual}
-          faturaAlvo={cartaoAtual.faturas?.find((f) => f.id === cicloSelecionadoId) || null}
+          faturaAlvo={
+            cartaoAtual.faturas?.find((f) => f.id === cicloSelecionadoId) ||
+            cartaoAtual.faturas?.find((f) => f.status === 'fechada' && f.valorFatura > 0) ||
+            cartaoAtual.faturas?.find((f) => f.status === 'aberta' || f.status === 'parcial') ||
+            cartaoAtual.faturas?.[0] ||
+            null
+          }
           aoSucesso={(msg) => {
             setMensagemAviso(msg);
             carregarCartoes();
           }}
         />
+      )}
+
+      {/* Modal de Confirmação de Estorno de Pagamento */}
+      {modalEstornoAberto && pagamentoParaEstornar && cartaoAtual && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white rounded-[28px] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-black/5 flex flex-col gap-4 animate-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-11 h-11 rounded-[22px] bg-amber-50 text-amber-600 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[24px]">undo</span>
+              </div>
+              <div className="flex flex-col">
+                <h3 className="text-[17px] font-semibold text-[#0a0a0a] tracking-tight">
+                  Estornar Pagamento
+                </h3>
+                <span className="text-[12px] text-[#737373]">
+                  {cartaoAtual.name} {pagamentoParaEstornar.cycleRotulo ? `• Fatura ${pagamentoParaEstornar.cycleRotulo}` : ""}
+                </span>
+              </div>
+            </div>
+
+            <div className="p-3.5 rounded-[18px] bg-neutral-50 border border-black/5 flex flex-col gap-1">
+              <span className="text-[11px] text-[#737373] uppercase tracking-wider">Valor a estornar</span>
+              <span className="text-[20px] font-bold text-[#0a0a0a]">
+                R$ {formatarMoeda(pagamentoParaEstornar.amount)}
+              </span>
+              <p className="text-[12px] text-neutral-600 leading-relaxed mt-1">
+                O valor será <strong>creditado de volta no bolso bancário de origem</strong> e a fatura voltará a constar como pendente de pagamento.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => {
+                  setModalEstornoAberto(false);
+                  setPagamentoParaEstornar(null);
+                }}
+                disabled={isEstornando}
+                className="flex-1 h-11 rounded-[18px] bg-[#f5f5f5] text-[#0a0a0a] text-[13px] font-medium hover:bg-[#e8e8e8] transition-colors cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleEstornarPagamento}
+                disabled={isEstornando}
+                className="flex-1 h-11 rounded-[18px] bg-amber-600 text-white text-[13px] font-medium hover:bg-amber-700 transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-sm"
+              >
+                {isEstornando ? (
+                  <>
+                    <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                    <span>Estornando...</span>
+                  </>
+                ) : (
+                  <span>Sim, Estornar</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </main>
   );

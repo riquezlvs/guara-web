@@ -17,18 +17,26 @@ export default function InvestimentosPage() {
   const [isHidden, setIsHidden] = useState(false);
   const [periodoAtivo, setPeriodoAtivo] = useState<"1M" | "6M" | "1A" | "TUDO">("1A");
 
-  // Modal Ajustar / Editar Todas as Informações / Excluir Instituição
-  const [modalAjusteAberto, setModalAjusteAberto] = useState(false);
-  const [instituicaoSelecionada, setInstituicaoSelecionada] = useState<InstituicaoItem | null>(null);
+  // Modal 1: Ajustar Saldo Rápido (para atualizar valor da caixinha/corretora)
+  const [modalAjusteSaldoAberto, setModalAjusteSaldoAberto] = useState(false);
+  const [instituicaoAjuste, setInstituicaoAjuste] = useState<InstituicaoItem | null>(null);
+  const [novoSaldoInput, setNovoSaldoInput] = useState("");
+  const [registrarTransacaoExtrato, setRegistrarTransacaoExtrato] = useState(true);
+  const [salvandoAjusteSaldo, setSalvandoAjusteSaldo] = useState(false);
+  const [mensagemAjusteSaldo, setMensagemAjusteSaldo] = useState<string | null>(null);
+
+  // Modal 2: Editar Metadados da Instituição / Excluir Conta
+  const [modalEditarAberto, setModalEditarAberto] = useState(false);
+  const [instituicaoEditar, setInstituicaoEditar] = useState<InstituicaoItem | null>(null);
   const [editNome, setEditNome] = useState("");
   const [editTipo, setEditTipo] = useState<"fixed_income" | "investment_broker" | "checking" | "benefit">("fixed_income");
   const [editSaldo, setEditSaldo] = useState("");
   const [editCdiRate, setEditCdiRate] = useState("");
   const [editStartDate, setEditStartDate] = useState("");
-  const [salvandoAjuste, setSalvandoAjuste] = useState(false);
+  const [salvandoEdicao, setSalvandoEdicao] = useState(false);
   const [removendoInstituicao, setRemovendoInstituicao] = useState(false);
   const [confirmandoExclusao, setConfirmandoExclusao] = useState(false);
-  const [mensagemAjuste, setMensagemAjuste] = useState<string | null>(null);
+  const [mensagemEdicao, setMensagemEdicao] = useState<string | null>(null);
 
   const carregarDados = useCallback(async () => {
     setIsLoading(true);
@@ -70,9 +78,52 @@ export default function InvestimentosPage() {
     return isNaN(num) ? 0 : num;
   };
 
+  // --- Handlers Modal 1: Ajustar Saldo ---
+  const abrirModalAjustarSaldo = (inst?: InstituicaoItem) => {
+    const alvo = inst || (data?.instituicoes && data.instituicoes[0]) || null;
+    setInstituicaoAjuste(alvo);
+    setNovoSaldoInput(
+      alvo?.balance !== undefined
+        ? alvo.balance.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+        : ""
+    );
+    setRegistrarTransacaoExtrato(true);
+    setMensagemAjusteSaldo(null);
+    setModalAjusteSaldoAberto(true);
+  };
+
+  const handleSalvarAjusteSaldo = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!instituicaoAjuste) return;
+
+    const valorNumerico = parseCurrencyNumber(novoSaldoInput);
+    setSalvandoAjusteSaldo(true);
+    setMensagemAjusteSaldo(null);
+
+    try {
+      const resp = await ajustarSaldoInvestimento({
+        accountId: instituicaoAjuste.id,
+        novoSaldo: valorNumerico,
+        registrarTransacao: registrarTransacaoExtrato,
+      });
+
+      setMensagemAjusteSaldo(resp.mensagem || "Saldo atualizado com sucesso!");
+      window.dispatchEvent(new CustomEvent("finances:refresh"));
+      setTimeout(() => {
+        setModalAjusteSaldoAberto(false);
+        carregarDados();
+      }, 700);
+    } catch (err: any) {
+      setMensagemAjusteSaldo(err.message || "Erro ao ajustar saldo.");
+    } finally {
+      setSalvandoAjusteSaldo(false);
+    }
+  };
+
+  // --- Handlers Modal 2: Editar Metadados da Instituição ---
   const popularCamposEdicao = (alvo: InstituicaoItem | null) => {
     if (!alvo) return;
-    setInstituicaoSelecionada(alvo);
+    setInstituicaoEditar(alvo);
     setEditNome(alvo.name || "");
     const tipoDetectado = (alvo.type as any) ||
       (alvo.subtitle.toLowerCase().includes("fixa") ? "fixed_income" : "investment_broker");
@@ -88,30 +139,28 @@ export default function InvestimentosPage() {
     );
   };
 
-  // Abre modal para editar todas as informações da instituição ou excluí-la
-  const abrirModalAjuste = (inst?: InstituicaoItem) => {
+  const abrirModalEditar = (inst?: InstituicaoItem) => {
     const alvo = inst || (data?.instituicoes && data.instituicoes[0]) || null;
     popularCamposEdicao(alvo);
-    setMensagemAjuste(null);
+    setMensagemEdicao(null);
     setConfirmandoExclusao(false);
-    setModalAjusteAberto(true);
+    setModalEditarAberto(true);
   };
 
-  const handleSalvarAjuste = async (e: React.FormEvent) => {
+  const handleSalvarEdicao = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!instituicaoSelecionada) return;
+    if (!instituicaoEditar) return;
 
     if (!editNome.trim()) {
-      setMensagemAjuste("Informe o nome da instituição ou ativo.");
+      setMensagemEdicao("Informe o nome da instituição ou ativo.");
       return;
     }
 
     const valorNumerico = parseCurrencyNumber(editSaldo);
-
-    setSalvandoAjuste(true);
+    setSalvandoEdicao(true);
     try {
       await editarInstituicaoCompleta({
-        accountId: instituicaoSelecionada.id,
+        accountId: instituicaoEditar.id,
         name: editNome.trim(),
         type: editTipo,
         balance: valorNumerico,
@@ -119,21 +168,21 @@ export default function InvestimentosPage() {
         start_date: editStartDate ? editStartDate : null,
       });
 
-      setMensagemAjuste("Instituição e informações atualizadas com sucesso!");
+      setMensagemEdicao("Instituição e informações atualizadas com sucesso!");
       window.dispatchEvent(new CustomEvent("finances:refresh"));
       setTimeout(() => {
-        setModalAjusteAberto(false);
+        setModalEditarAberto(false);
         carregarDados();
       }, 700);
     } catch (err: any) {
-      setMensagemAjuste(err.message || "Erro ao salvar alterações da instituição.");
+      setMensagemEdicao(err.message || "Erro ao salvar alterações da instituição.");
     } finally {
-      setSalvandoAjuste(false);
+      setSalvandoEdicao(false);
     }
   };
 
   const handleRemoverInstituicao = async () => {
-    if (!instituicaoSelecionada) return;
+    if (!instituicaoEditar) return;
 
     if (!confirmandoExclusao) {
       setConfirmandoExclusao(true);
@@ -142,15 +191,15 @@ export default function InvestimentosPage() {
 
     setRemovendoInstituicao(true);
     try {
-      await removerInstituicao(instituicaoSelecionada.id);
-      setMensagemAjuste("Instituição excluída com sucesso.");
+      await removerInstituicao(instituicaoEditar.id);
+      setMensagemEdicao("Instituição excluída com sucesso.");
       window.dispatchEvent(new CustomEvent("finances:refresh"));
       setTimeout(() => {
-        setModalAjusteAberto(false);
+        setModalEditarAberto(false);
         carregarDados();
       }, 600);
     } catch (err: any) {
-      setMensagemAjuste(err.message || "Erro ao excluir instituição.");
+      setMensagemEdicao(err.message || "Erro ao excluir instituição.");
     } finally {
       setRemovendoInstituicao(false);
       setConfirmandoExclusao(false);
@@ -177,15 +226,6 @@ export default function InvestimentosPage() {
               </span>
             </div>
             <div className="flex items-center gap-1.5">
-              <button
-                type="button"
-                aria-label="Editar Patrimônio"
-                onClick={() => abrirModalAjuste()}
-                className="h-8 px-2.5 rounded-[18px] bg-surface-alt flex items-center gap-1 text-ink font-label-sm text-label-sm shadow-[0_0_0_1px_rgba(23,23,23,0.06)] active:scale-95 transition-all cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[15px]">edit</span>
-                <span>Editar</span>
-              </button>
               <button
                 type="button"
                 aria-label="Ocultar valores"
@@ -241,7 +281,7 @@ export default function InvestimentosPage() {
             </div>
           </div>
 
-          {/* Action Buttons Bar - Fixed Grid Layout to prevent overflow / leaking */}
+          {/* Action Buttons Bar - Grid com Ações Claras e Distintas */}
           <div className="pt-2 grid grid-cols-3 gap-1.5 w-full">
             <Link
               href="/investimentos/novo"
@@ -252,17 +292,17 @@ export default function InvestimentosPage() {
             </Link>
             <button
               type="button"
-              onClick={() => abrirModalAjuste()}
+              onClick={() => abrirModalAjustarSaldo()}
               className="h-9 rounded-[16px] bg-surface-alt text-ink text-[12px] font-medium flex items-center justify-center gap-1 shadow-[0_0_0_1px_rgba(23,23,23,0.06)] active:scale-95 transition-transform cursor-pointer px-1 min-w-0"
             >
-              <span className="material-symbols-outlined text-[15px] shrink-0">edit_note</span>
+              <span className="material-symbols-outlined text-[15px] shrink-0">tune</span>
               <span className="truncate">Ajustar</span>
             </button>
             <Link
               href="/investimentos/extrato"
               className="h-9 rounded-[16px] bg-surface-alt text-ink text-[12px] font-medium flex items-center justify-center gap-1 shadow-[0_0_0_1px_rgba(23,23,23,0.06)] active:scale-95 transition-transform px-1 min-w-0"
             >
-              <span className="material-symbols-outlined text-[15px] shrink-0">download</span>
+              <span className="material-symbols-outlined text-[15px] shrink-0">receipt_long</span>
               <span className="truncate">Extrato</span>
             </Link>
           </div>
@@ -390,7 +430,11 @@ export default function InvestimentosPage() {
             </div>
           ) : (
             <p className="font-body-sm text-body-sm text-ink-soft leading-relaxed">
-              Sua carteira rendeu <strong className="font-semibold text-ink">118% do CDI</strong> no último período. Com aportes de <span className="font-mono text-[12px] bg-paper px-1.5 py-0.5 rounded-[6px] shadow-[0_0_0_1px_rgba(23,23,23,0.05)]">R$ 1.500/mês</span>, sua meta de R$ 200.000 será atingida em <strong className="font-semibold text-ink">14 meses</strong>.
+              {data?.diagnostico?.mensagem || (
+                <>
+                  Sua carteira de patrimônio consolidada está pronta para novos aportes e acompanhamento de rendimento contínuo.
+                </>
+              )}
             </p>
           )}
         </section>
@@ -483,7 +527,7 @@ export default function InvestimentosPage() {
               </span>
               <button
                 type="button"
-                onClick={() => abrirModalAjuste()}
+                onClick={() => abrirModalEditar()}
                 className="font-caption text-caption text-ink font-medium flex items-center gap-0.5 active:scale-95 transition-transform cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[13px]">tune</span>
@@ -528,13 +572,13 @@ export default function InvestimentosPage() {
                         {isHidden ? "••••••" : `R$ ${inst.balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })}`}
                       </span>
                       <p className="font-caption text-caption text-mid-gray">
-                        {inst.monthlyVariation}
+                        {inst.cdi_rate ? `${inst.cdi_rate}% do CDI` : inst.type === 'investment_broker' ? 'Renda Variável' : inst.monthlyVariation}
                       </p>
                     </div>
                     <button
                       type="button"
                       aria-label={`Editar ${inst.name}`}
-                      onClick={() => abrirModalAjuste(inst)}
+                      onClick={() => abrirModalEditar(inst)}
                       className="w-8 h-8 rounded-full bg-surface-alt flex items-center justify-center text-mid-gray hover:text-ink shadow-[0_0_0_1px_rgba(23,23,23,0.06)] active:scale-95 transition-all cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-[16px]">edit</span>
@@ -547,8 +591,8 @@ export default function InvestimentosPage() {
         </section>
       </div>
 
-      {/* Modal Interativo para Editar Todas as Informações / Excluir Instituição */}
-      {modalAjusteAberto && (
+      {/* Modal 1: Ajustar Saldo Rápido */}
+      {modalAjusteSaldoAberto && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
           <div className="w-full max-w-md bg-white rounded-[28px] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-black/5 flex flex-col gap-4 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
             {/* Cabeçalho */}
@@ -559,36 +603,203 @@ export default function InvestimentosPage() {
                 </div>
                 <div>
                   <h3 className="text-[16px] font-semibold text-[#0a0a0a] tracking-tight">
-                    Editar Instituição
+                    Ajustar Saldo
                   </h3>
                   <span className="text-[12px] text-[#737373]">
-                    Atualize qualquer dado ou remova a conta
+                    Atualize o saldo real da sua caixinha ou corretora
                   </span>
                 </div>
               </div>
               <button
                 type="button"
-                onClick={() => setModalAjusteAberto(false)}
+                onClick={() => setModalAjusteSaldoAberto(false)}
                 className="w-8 h-8 rounded-full flex items-center justify-center text-[#737373] hover:text-[#0a0a0a] hover:bg-[#f5f5f5] cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">close</span>
               </button>
             </div>
 
-            <form onSubmit={handleSalvarAjuste} className="flex flex-col gap-3.5">
+            <form onSubmit={handleSalvarAjusteSaldo} className="flex flex-col gap-3.5">
+              {/* Selecionar Instituição */}
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-[#737373] block mb-1 font-medium">
+                  Instituição / Conta
+                </label>
+                <select
+                  value={instituicaoAjuste?.id || ""}
+                  onChange={(e) => {
+                    const inst = instituicoes.find((i) => i.id === e.target.value);
+                    if (inst) {
+                      setInstituicaoAjuste(inst);
+                      setNovoSaldoInput(
+                        inst.balance !== undefined
+                          ? inst.balance.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })
+                          : ""
+                      );
+                      setMensagemAjusteSaldo(null);
+                    }
+                  }}
+                  className="w-full h-11 px-3 bg-[#fafafa] rounded-[16px] text-[13px] text-[#0a0a0a] font-medium outline-none border border-black/5 cursor-pointer focus:bg-white focus:border-black/20"
+                >
+                  {instituicoes.map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name} (Saldo Atual: R$ {i.balance.toLocaleString("pt-BR", { minimumFractionDigits: 2 })})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Saldo Atual vs Novo Saldo */}
+              <div className="p-3 rounded-[16px] bg-[#fafafa] border border-black/5 flex items-center justify-between">
+                <span className="text-[12px] text-[#737373]">Saldo atual cadastrado:</span>
+                <span className="text-[13px] font-mono font-medium text-[#0a0a0a]">
+                  R$ {(instituicaoAjuste?.balance || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                </span>
+              </div>
+
+              {/* Novo Saldo Real */}
+              <div>
+                <label className="text-[11px] uppercase tracking-wider text-[#737373] block mb-1 font-medium">
+                  Novo Saldo Real
+                </label>
+                <div className="relative flex items-center">
+                  <span className="absolute left-3.5 text-[14px] text-[#737373] font-mono">
+                    R$
+                  </span>
+                  <input
+                    type="text"
+                    value={novoSaldoInput}
+                    onChange={(e) => setNovoSaldoInput(formatCurrency(e.target.value))}
+                    placeholder="0,00"
+                    className="w-full h-11 pl-10 pr-3 bg-[#fafafa] rounded-[16px] text-[16px] font-bold text-[#0a0a0a] font-mono outline-none border border-black/5 focus:bg-white focus:border-black/20"
+                    required
+                    autoFocus
+                  />
+                </div>
+              </div>
+
+              {/* Variação em tempo real */}
+              {(() => {
+                const saldoAtualNum = instituicaoAjuste?.balance || 0;
+                const novoSaldoNum = parseCurrencyNumber(novoSaldoInput);
+                const diff = novoSaldoNum - saldoAtualNum;
+                if (!novoSaldoInput || diff === 0) return null;
+
+                const isPositivo = diff > 0;
+                return (
+                  <div className={`p-2.5 rounded-[14px] text-[12px] flex items-center justify-between ${
+                    isPositivo ? "bg-emerald-50 text-emerald-800 border border-emerald-200/60" : "bg-amber-50 text-amber-900 border border-amber-200/60"
+                  }`}>
+                    <span className="font-medium flex items-center gap-1">
+                      <span className="material-symbols-outlined text-[16px]">
+                        {isPositivo ? "trending_up" : "trending_down"}
+                      </span>
+                      {isPositivo ? "Variação positiva (Rendimento/Aporte)" : "Variação negativa (Resgate/Ajuste)"}:
+                    </span>
+                    <strong className="font-mono font-bold">
+                      {isPositivo ? "+" : ""}R$ {diff.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </strong>
+                  </div>
+                );
+              })()}
+
+              {/* Checkbox: Registrar no extrato */}
+              <label className="flex items-center gap-2 p-1 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={registrarTransacaoExtrato}
+                  onChange={(e) => setRegistrarTransacaoExtrato(e.target.checked)}
+                  className="w-4 h-4 rounded text-black accent-black cursor-pointer"
+                />
+                <span className="text-[12px] text-[#0a0a0a]">
+                  Registrar variação como movimentação no extrato
+                </span>
+              </label>
+
+              {mensagemAjusteSaldo && (
+                <div
+                  className={`p-2.5 rounded-[14px] text-[12px] flex items-center gap-2 ${
+                    mensagemAjusteSaldo.includes("sucesso")
+                      ? "bg-emerald-50 text-emerald-700"
+                      : "bg-rose-50 text-rose-600"
+                  }`}
+                >
+                  <span className="material-symbols-outlined text-[16px]">
+                    {mensagemAjusteSaldo.includes("sucesso") ? "check_circle" : "error"}
+                  </span>
+                  <span>{mensagemAjusteSaldo}</span>
+                </div>
+              )}
+
+              {/* Botões */}
+              <div className="flex items-center gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setModalAjusteSaldoAberto(false)}
+                  className="flex-1 h-11 rounded-[16px] bg-[#f5f5f5] text-[#0a0a0a] text-[13px] font-medium hover:bg-[#e8e8e8] cursor-pointer transition-colors"
+                >
+                  Cancelar
+                </button>
+                <button
+                  type="submit"
+                  disabled={salvandoAjusteSaldo}
+                  className="flex-1 h-11 rounded-[16px] bg-black text-white text-[13px] font-medium hover:bg-neutral-800 disabled:opacity-50 cursor-pointer transition-colors flex items-center justify-center gap-1.5"
+                >
+                  {salvandoAjusteSaldo && (
+                    <span className="material-symbols-outlined animate-spin text-[16px]">
+                      progress_activity
+                    </span>
+                  )}
+                  <span>{salvandoAjusteSaldo ? "Salvando..." : "Atualizar Saldo"}</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Modal 2: Editar Metadados da Instituição */}
+      {modalEditarAberto && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="w-full max-w-md bg-white rounded-[28px] p-6 shadow-[0_20px_50px_rgba(0,0,0,0.15)] border border-black/5 flex flex-col gap-4 animate-in zoom-in-95 duration-200 max-h-[90vh] overflow-y-auto">
+            {/* Cabeçalho */}
+            <div className="flex items-center justify-between pb-1 border-b border-black/5">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-[14px] bg-[#f5f5f5] flex items-center justify-center text-[#0a0a0a]">
+                  <span className="material-symbols-outlined text-[22px]">edit</span>
+                </div>
+                <div>
+                  <h3 className="text-[16px] font-semibold text-[#0a0a0a] tracking-tight">
+                    Editar Instituição
+                  </h3>
+                  <span className="text-[12px] text-[#737373]">
+                    Altere nome, categoria, rentabilidade ou remova a conta
+                  </span>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setModalEditarAberto(false)}
+                className="w-8 h-8 rounded-full flex items-center justify-center text-[#737373] hover:text-[#0a0a0a] hover:bg-[#f5f5f5] cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            <form onSubmit={handleSalvarEdicao} className="flex flex-col gap-3.5">
               {/* Selecionar Instituição se houver mais de uma */}
               <div>
                 <label className="text-[11px] uppercase tracking-wider text-[#737373] block mb-1 font-medium">
                   Instituição / Conta
                 </label>
                 <select
-                  value={instituicaoSelecionada?.id || ""}
+                  value={instituicaoEditar?.id || ""}
                   onChange={(e) => {
                     const inst = instituicoes.find((i) => i.id === e.target.value);
                     if (inst) {
                       popularCamposEdicao(inst);
                       setConfirmandoExclusao(false);
-                      setMensagemAjuste(null);
+                      setMensagemEdicao(null);
                     }
                   }}
                   className="w-full h-11 px-3 bg-[#fafafa] rounded-[16px] text-[13px] text-[#0a0a0a] font-medium outline-none border border-black/5 cursor-pointer focus:bg-white focus:border-black/20"
@@ -711,18 +922,18 @@ export default function InvestimentosPage() {
                 </div>
               </div>
 
-              {mensagemAjuste && (
+              {mensagemEdicao && (
                 <div
                   className={`p-2.5 rounded-[14px] text-[12px] flex items-center gap-2 ${
-                    mensagemAjuste.includes("sucesso")
+                    mensagemEdicao.includes("sucesso")
                       ? "bg-emerald-50 text-emerald-700"
                       : "bg-rose-50 text-rose-600"
                   }`}
                 >
                   <span className="material-symbols-outlined text-[16px]">
-                    {mensagemAjuste.includes("sucesso") ? "check_circle" : "error"}
+                    {mensagemEdicao.includes("sucesso") ? "check_circle" : "error"}
                   </span>
-                  <span>{mensagemAjuste}</span>
+                  <span>{mensagemEdicao}</span>
                 </div>
               )}
 
@@ -730,22 +941,22 @@ export default function InvestimentosPage() {
               <div className="flex items-center gap-2 pt-2">
                 <button
                   type="button"
-                  onClick={() => setModalAjusteAberto(false)}
+                  onClick={() => setModalEditarAberto(false)}
                   className="flex-1 h-11 rounded-[16px] bg-[#f5f5f5] text-[#0a0a0a] text-[13px] font-medium hover:bg-[#e8e8e8] cursor-pointer transition-colors"
                 >
                   Cancelar
                 </button>
                 <button
                   type="submit"
-                  disabled={salvandoAjuste}
+                  disabled={salvandoEdicao}
                   className="flex-1 h-11 rounded-[16px] bg-black text-white text-[13px] font-medium hover:bg-neutral-800 disabled:opacity-50 cursor-pointer transition-colors flex items-center justify-center gap-1.5"
                 >
-                  {salvandoAjuste && (
+                  {salvandoEdicao && (
                     <span className="material-symbols-outlined animate-spin text-[16px]">
                       progress_activity
                     </span>
                   )}
-                  <span>{salvandoAjuste ? "Salvando..." : "Salvar Alterações"}</span>
+                  <span>{salvandoEdicao ? "Salvando..." : "Salvar Alterações"}</span>
                 </button>
               </div>
 

@@ -15,6 +15,7 @@ interface ContaOpcao {
   id: string;
   name: string;
   balance: number;
+  type?: string;
 }
 
 export function ModalPagarFatura({
@@ -26,6 +27,7 @@ export function ModalPagarFatura({
 }: ModalPagarFaturaProps) {
   const [contas, setContas] = useState<ContaOpcao[]>([]);
   const [contaSelecionadaId, setContaSelecionadaId] = useState<string>("");
+  const [filtroCategoria, setFiltroCategoria] = useState<"todos" | "bolsos" | "patrimonio">("todos");
   const [modoValor, setModoValor] = useState<"total" | "outro">("total");
   const [valorCustomizadoInput, setValorCustomizadoInput] = useState<string>("");
   const [isProcessando, setIsProcessando] = useState(false);
@@ -40,25 +42,28 @@ export function ModalPagarFatura({
     setErro(null);
     setModoValor("total");
     setValorCustomizadoInput("");
+    setFiltroCategoria("todos");
 
     async function buscarContas() {
       try {
         const dash = await obterDashboard();
         if (dash.sucesso && dash.data) {
           const listaContas = dash.data.saldo?.contas || dash.data.consolidado?.accounts || [];
-          const contasLiquidas: ContaOpcao[] = listaContas
-            .filter((c: any) => c.type === "checking" || !c.type)
+          // Permite bolsos de dia a dia (checking) e patrimônio (fixed_income, investment_broker)
+          const contasValidas: ContaOpcao[] = listaContas
+            .filter((c: any) => c.type !== "benefit")
             .map((c: any) => ({
               id: c.id,
               name: c.name,
               balance: Number(c.balance || 0),
+              type: c.type || "checking",
             }));
 
-          setContas(contasLiquidas);
-          if (contasLiquidas.length > 0) {
+          setContas(contasValidas);
+          if (contasValidas.length > 0) {
             // Seleciona a primeira conta ou a que tem saldo suficiente
-            const comSaldo = contasLiquidas.find((c) => c.balance >= valorFaturaTotal);
-            setContaSelecionadaId(comSaldo?.id || contasLiquidas[0].id);
+            const comSaldo = contasValidas.find((c) => c.balance >= valorFaturaTotal);
+            setContaSelecionadaId(comSaldo?.id || contasValidas[0].id);
           }
         }
       } catch (e) {
@@ -71,7 +76,16 @@ export function ModalPagarFatura({
 
   if (!aberto) return null;
 
+  const ehPatrimonio = (tipo?: string) => tipo === "fixed_income" || tipo === "investment_broker";
+
+  const contasExibidas = contas.filter((c) => {
+    if (filtroCategoria === "bolsos") return !ehPatrimonio(c.type);
+    if (filtroCategoria === "patrimonio") return ehPatrimonio(c.type);
+    return true;
+  });
+
   const contaAtual = contas.find((c) => c.id === contaSelecionadaId) || contas[0];
+  const isContaPatrimonio = contaAtual ? ehPatrimonio(contaAtual.type) : false;
   const saldoDisponivel = contaAtual ? Number(contaAtual.balance || 0) : 0;
 
   const formatarMoeda = (val?: number) => {
@@ -137,6 +151,7 @@ export function ModalPagarFatura({
         cardId: cartao.id,
         accountId: contaAtual.id,
         amount: valorEfetivo,
+        billingCycle: faturaAlvo?.id || faturaAlvo?.mesReferencia,
       });
 
       // Dispara atualização em todo o aplicativo
@@ -184,30 +199,94 @@ export function ModalPagarFatura({
         {/* Fatura Alvo Card */}
         <div className="p-3.5 rounded-[20px] bg-[#fafafa] border border-black/5 flex items-center justify-between">
           <div className="flex flex-col">
-            <span className="text-[11px] uppercase tracking-wider text-[#737373] font-medium">
-              {faturaAlvo ? faturaAlvo.rotulo : "Fatura Aberta"}
+            <span className="text-[11px] uppercase tracking-wider text-[#737373] font-medium flex items-center gap-1.5">
+              <span>{faturaAlvo ? `Fatura de ${faturaAlvo.rotulo}` : "Fatura Aberta"}</span>
+              {faturaAlvo?.mesReferencia && (
+                <span className="text-[10px] font-mono text-neutral-400 font-normal">
+                  ({faturaAlvo.mesReferencia})
+                </span>
+              )}
             </span>
             <span className="text-[20px] font-bold text-[#0a0a0a] tracking-tight">
               R$ {formatarMoeda(valorFaturaTotal)}
             </span>
           </div>
-          <span className="px-2.5 py-1 rounded-full text-[11px] font-semibold bg-rose-50 text-rose-700 border border-rose-200">
+          <span className={`px-2.5 py-1 rounded-full text-[11px] font-semibold border ${
+            faturaAlvo?.status === "fechada"
+              ? "bg-rose-50 text-rose-700 border-rose-200"
+              : "bg-sky-50 text-sky-700 border-sky-200"
+          }`}>
             {faturaAlvo?.status === "fechada" ? "Fechada • Pagar" : "Em aberto"}
           </span>
         </div>
 
         {/* Seletor de Bolso / Conta de Origem */}
-        <div className="flex flex-col gap-1.5">
-          <label className="text-[12px] font-semibold text-[#0a0a0a] flex items-center justify-between">
-            <span>Debitar do bolso (Conta de Origem):</span>
+        <div className="flex flex-col gap-2">
+          <div className="flex items-center justify-between">
+            <label className="text-[12px] font-semibold text-[#0a0a0a]">
+              Origem do Pagamento:
+            </label>
             <span className="text-[11px] text-[#737373] font-normal">
               Saldo: R$ {formatarMoeda(saldoDisponivel)}
             </span>
-          </label>
-          <div className="flex flex-col gap-2">
-            {contas.length > 0 ? (
-              contas.map((c) => {
+          </div>
+
+          {/* Abas de filtro: Todos / Bolsos / Patrimônio */}
+          <div className="flex p-0.5 rounded-[14px] bg-neutral-100 border border-black/5 text-[11px] font-medium text-neutral-600">
+            <button
+              type="button"
+              onClick={() => setFiltroCategoria("todos")}
+              className={`flex-1 py-1.5 rounded-[12px] transition-all cursor-pointer text-center ${
+                filtroCategoria === "todos"
+                  ? "bg-white text-black font-semibold shadow-xs"
+                  : "hover:text-black"
+              }`}
+            >
+              Todos ({contas.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroCategoria("bolsos")}
+              className={`flex-1 py-1.5 rounded-[12px] transition-all cursor-pointer text-center ${
+                filtroCategoria === "bolsos"
+                  ? "bg-white text-black font-semibold shadow-xs"
+                  : "hover:text-black"
+              }`}
+            >
+              Bolsos ({contas.filter((c) => !ehPatrimonio(c.type)).length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFiltroCategoria("patrimonio")}
+              className={`flex-1 py-1.5 rounded-[12px] transition-all cursor-pointer text-center ${
+                filtroCategoria === "patrimonio"
+                  ? "bg-white text-black font-semibold shadow-xs"
+                  : "hover:text-black"
+              }`}
+            >
+              Patrimônio ({contas.filter((c) => ehPatrimonio(c.type)).length})
+            </button>
+          </div>
+
+          {/* Lista de Contas */}
+          <div className="flex flex-col gap-2 max-h-48 overflow-y-auto pr-0.5">
+            {contasExibidas.length > 0 ? (
+              contasExibidas.map((c) => {
                 const isSelected = c.id === contaSelecionadaId;
+                const isPatrimonioItem = ehPatrimonio(c.type);
+                const icone =
+                  c.type === "fixed_income"
+                    ? "savings"
+                    : c.type === "investment_broker"
+                    ? "trending_up"
+                    : "account_balance";
+                const labelTipo =
+                  c.type === "fixed_income"
+                    ? "Caixinha / Renda Fixa"
+                    : c.type === "investment_broker"
+                    ? "Investimento"
+                    : "Bolso";
+
                 return (
                   <button
                     key={c.id}
@@ -223,12 +302,39 @@ export function ModalPagarFatura({
                     }`}
                   >
                     <div className="flex items-center gap-2.5">
-                      <span className={`material-symbols-outlined text-[18px] ${isSelected ? "text-white" : "text-[#737373]"}`}>
-                        account_balance
-                      </span>
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 ${
+                          isSelected
+                            ? "bg-white/10 text-white"
+                            : isPatrimonioItem
+                            ? "bg-amber-100 text-amber-800"
+                            : "bg-neutral-200 text-[#0a0a0a]"
+                        }`}
+                      >
+                        <span className="material-symbols-outlined text-[17px]">
+                          {icone}
+                        </span>
+                      </div>
                       <div className="flex flex-col">
-                        <span className="text-[13px] font-medium leading-tight">{c.name}</span>
-                        <span className={`text-[11px] ${isSelected ? "text-neutral-300" : "text-[#737373]"}`}>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[13px] font-medium leading-tight">{c.name}</span>
+                          {isPatrimonioItem && (
+                            <span
+                              className={`px-1.5 py-0.5 rounded-md text-[9.5px] font-medium tracking-tight ${
+                                isSelected
+                                  ? "bg-amber-400/20 text-amber-300 border border-amber-400/30"
+                                  : "bg-amber-50 text-amber-700 border border-amber-200"
+                              }`}
+                            >
+                              {labelTipo}
+                            </span>
+                          )}
+                        </div>
+                        <span
+                          className={`text-[11px] ${
+                            isSelected ? "text-neutral-300" : "text-[#737373]"
+                          }`}
+                        >
                           Disponível: R$ {formatarMoeda(c.balance)}
                         </span>
                       </div>
@@ -242,11 +348,28 @@ export function ModalPagarFatura({
                 );
               })
             ) : (
-              <div className="p-3 rounded-[16px] bg-[#fafafa] border border-black/5 text-[12px] text-[#737373]">
-                Carregando contas disponíveis...
+              <div className="p-3 rounded-[16px] bg-[#fafafa] border border-black/5 text-[12px] text-[#737373] text-center">
+                Nenhuma conta encontrada nesta categoria.
               </div>
             )}
           </div>
+
+          {/* Destaque quando patrimônio está selecionado */}
+          {isContaPatrimonio && (
+            <div className="p-2.5 rounded-[16px] bg-amber-50 border border-amber-200 flex items-start gap-2 text-amber-950">
+              <span className="material-symbols-outlined text-[17px] text-amber-600 shrink-0 mt-0.5">
+                auto_awesome
+              </span>
+              <div className="flex flex-col text-[11px] leading-tight">
+                <span className="font-semibold text-amber-900">
+                  Débito direto do seu Patrimônio
+                </span>
+                <span className="text-amber-800 mt-0.5">
+                  Não precisa transferir para a conta principal. O valor sai direto da sua reserva/caixinha.
+                </span>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Seleção do Valor */}
@@ -310,7 +433,7 @@ export function ModalPagarFatura({
           <div className="p-3 rounded-[16px] bg-rose-50 border border-rose-200/80 flex flex-col gap-1.5 text-rose-950">
             <div className="flex items-center gap-2 text-[12px] font-semibold text-rose-800">
               <span className="material-symbols-outlined text-[16px]">warning</span>
-              <span>Saldo insuficiente no bolso selecionado</span>
+              <span>Saldo insuficiente na conta selecionada</span>
             </div>
             <p className="text-[11px] text-rose-700 leading-tight">
               Você tem R$ {formatarMoeda(saldoDisponivel)} disponível. Você pode pagar parcialmente até esse valor.
@@ -336,7 +459,9 @@ export function ModalPagarFatura({
             </span>
             <div className="flex flex-col gap-0.5 text-emerald-800 text-[11.5px]">
               <div>
-                • <strong>-R$ {formatarMoeda(valorEfetivo)}</strong> do bolso {contaAtual?.name} (Restam R$ {formatarMoeda(saldoRestanteConta)}).
+                • <strong>-R$ {formatarMoeda(valorEfetivo)}</strong>{" "}
+                {isContaPatrimonio ? "debitado diretamente do patrimônio" : "do bolso"}{" "}
+                <strong>{contaAtual?.name}</strong> (Restam R$ {formatarMoeda(saldoRestanteConta)}).
               </div>
               <div>
                 • <strong>+R$ {formatarMoeda(limiteLiberado)}</strong> de limite de crédito liberado no cartão.

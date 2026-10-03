@@ -354,6 +354,7 @@ export interface ItemExtrato {
   installment_total?: number | null;
   installment_group_id?: string | null;
   observation?: string | null;
+  tags?: string[] | null;
   is_recurring?: boolean;
   categories?: { id: number; name: string } | null;
   accounts?: { id: string; name: string; type: string } | null;
@@ -444,6 +445,7 @@ export interface CicloFaturaItem {
     installment_number?: number | null;
     installment_total?: number | null;
     is_payment?: boolean;
+    payment_id?: string;
   }>;
 }
 
@@ -477,6 +479,7 @@ export interface CartaoItem {
     installment_number?: number | null;
     installment_total?: number | null;
     is_payment?: boolean;
+    payment_id?: string;
   }>;
   faturas?: CicloFaturaItem[];
 }
@@ -563,6 +566,7 @@ export interface PagamentoFaturaPayload {
   accountId: string;
   amount: number;
   paidAt?: string;
+  billingCycle?: string;
 }
 
 export interface ResultadoPagamentoFaturaResponse {
@@ -574,9 +578,29 @@ export interface ResultadoPagamentoFaturaResponse {
   accountId?: string;
   accountName?: string;
   amount?: number;
+  billingCycle?: string | null;
   novoSaldoConta?: number;
   novaFaturaAtual?: number;
   novoLimiteDisponivel?: number;
+  isPatrimonio?: boolean;
+  accountType?: string;
+}
+
+export interface EstornoPagamentoPayload {
+  paymentId?: string;
+  cardId?: string;
+}
+
+export interface ResultadoEstornoPagamentoResponse {
+  sucesso: boolean;
+  mensagem: string;
+  paymentId?: string;
+  cardId?: string;
+  cardName?: string;
+  accountId?: string;
+  accountName?: string;
+  amountEstornado?: number;
+  novoSaldoConta?: number;
 }
 
 /**
@@ -596,6 +620,28 @@ export async function pagarFaturaCartao(
   const json = await res.json().catch(() => ({}));
   if (!res.ok) {
     throw new Error(json.mensagem || `Erro ao pagar fatura: ${res.status}`);
+  }
+
+  return json;
+}
+
+/**
+ * Estorna um pagamento de fatura, devolvendo o saldo para a conta e reabrindo a fatura
+ */
+export async function estornarPagamentoFatura(
+  payload: EstornoPagamentoPayload
+): Promise<ResultadoEstornoPagamentoResponse> {
+  const res = await fetch(`${API_BASE_URL}/api/cards/cancel-invoice-payment`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  const json = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json.mensagem || `Erro ao estornar pagamento: ${res.status}`);
   }
 
   return json;
@@ -753,7 +799,7 @@ export async function cadastrarAtivo(
  * Ajusta o saldo de uma instituição/conta de investimento
  */
 export async function ajustarSaldoInvestimento(
-  dados: { accountId?: string; name?: string; novoSaldo: number }
+  dados: { accountId?: string; name?: string; novoSaldo: number; registrarTransacao?: boolean; motivo?: string }
 ): Promise<{ sucesso: boolean; dados: any; mensagem: string }> {
   const res = await fetch(`${API_BASE_URL}/api/investimentos/ajustar-saldo`, {
     method: 'POST',
@@ -1053,6 +1099,9 @@ export async function atualizarTransacao(
     payment_method?: string;
     occurred_at?: string;
     observation?: string;
+    tags?: string[];
+    installment_number?: number | null;
+    installment_total?: number | null;
     entry_type?: 'expense' | 'income';
   }
 ): Promise<{ sucesso: boolean; mensagem: string; dados?: any }> {

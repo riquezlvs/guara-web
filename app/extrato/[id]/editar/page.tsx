@@ -40,6 +40,11 @@ export default function EditarLancamentoPage() {
   const [ignoreStats, setIgnoreStats] = useState(false);
   const [reimbursable, setReimbursable] = useState(false);
 
+  // Parcelamento states
+  const [isInstallment, setIsInstallment] = useState(false);
+  const [installmentNumber, setInstallmentNumber] = useState<number>(1);
+  const [installmentTotal, setInstallmentTotal] = useState<number>(2);
+
   // Selected Category and Account
   const [selectedCategoryId, setSelectedCategoryId] = useState<number | undefined>(undefined);
   const [selectedCategoryName, setSelectedCategoryName] = useState<string>("Geral");
@@ -95,7 +100,16 @@ export default function EditarLancamentoPage() {
               maximumFractionDigits: 2,
             })
           );
-          setMerchant(found.description || "");
+
+          const isParc = Boolean(found.installment_total && found.installment_total > 1);
+          setIsInstallment(isParc);
+          setInstallmentNumber(found.installment_number || 1);
+          setInstallmentTotal(found.installment_total || 2);
+
+          const descLimpa = isParc
+            ? found.description.replace(/\s*\(?\d+\/\d+\)?\s*$/i, "").trim()
+            : found.description;
+          setMerchant(descLimpa || "");
 
           if (found.occurred_at) {
             const dt = new Date(found.occurred_at);
@@ -107,7 +121,11 @@ export default function EditarLancamentoPage() {
           }
 
           setNotes(found.observation || "");
-          setTags(found.categories?.name ? [`#${found.categories.name}`] : []);
+          setTags(
+            found.tags && Array.isArray(found.tags) && found.tags.length > 0
+              ? found.tags
+              : (found.categories?.name ? [`#${found.categories.name}`] : [])
+          );
 
           setSelectedCategoryId(found.categories?.id);
           setSelectedCategoryName(found.categories?.name || "Geral");
@@ -147,15 +165,22 @@ export default function EditarLancamentoPage() {
       return;
     }
 
+    const finalDescription = isInstallment && installmentTotal > 1
+      ? `${merchant.trim()} (${installmentNumber}/${installmentTotal})`
+      : merchant.trim();
+
     setIsSaving(true);
     try {
       await atualizarTransacao(transaction.display_id, {
-        description: merchant.trim(),
+        description: finalDescription,
         total_amount: cleanAmount,
         entry_type: entryType,
         category_id: selectedCategoryId,
         payment_method: selectedPaymentMethod,
         observation: notes.trim() || undefined,
+        tags: tags,
+        installment_number: isInstallment ? installmentNumber : null,
+        installment_total: isInstallment ? installmentTotal : null,
       });
 
       showToast("Alterações salvas com sucesso!");
@@ -567,6 +592,146 @@ export default function EditarLancamentoPage() {
               </div>
             </div>
 
+            {/* Plano de Parcelamento Card */}
+            <div className="bg-paper rounded-[24px] shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.08)] p-5 flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <span className="text-[12px] uppercase text-mid-gray tracking-wider font-medium">
+                  Plano de Parcelamento
+                </span>
+                <span className="material-symbols-outlined text-mid-gray text-[18px]">view_timeline</span>
+              </div>
+
+              {/* Toggle Compra Parcelada */}
+              <div className="flex items-center justify-between gap-3 py-1">
+                <div className="flex flex-col">
+                  <span className="text-[14px] font-medium text-ink">Compra parcelada</span>
+                  <span className="text-[12px] text-mid-gray">Dividir o valor em parcelas mensais</span>
+                </div>
+                <button
+                  aria-checked={isInstallment}
+                  className={`w-11 h-6 rounded-full p-0.5 flex items-center transition-colors cursor-pointer ${
+                    isInstallment ? "bg-ink" : "bg-surface-container"
+                  }`}
+                  onClick={() => setIsInstallment(!isInstallment)}
+                  role="switch"
+                  type="button"
+                >
+                  <span
+                    className={`w-5 h-5 rounded-full bg-paper shadow-sm transform transition-transform ${
+                      isInstallment ? "translate-x-5" : "translate-x-0"
+                    }`}
+                  ></span>
+                </button>
+              </div>
+
+              {isInstallment && (
+                <div className="flex flex-col gap-3 pt-2 border-t border-black/5 animate-in fade-in duration-200">
+                  <div className="grid grid-cols-2 gap-2">
+                    {/* Parcela Atual */}
+                    <div className="flex flex-col gap-1.5">
+                      <label
+                        className="text-[12px] uppercase text-mid-gray tracking-wider font-medium"
+                        htmlFor="installment-number"
+                      >
+                        Parcela atual
+                      </label>
+                      <div className="relative flex items-center">
+                        <input
+                          id="installment-number"
+                          type="number"
+                          min={1}
+                          max={installmentTotal}
+                          value={installmentNumber}
+                          onChange={(e) =>
+                            setInstallmentNumber(
+                              Math.max(1, Math.min(installmentTotal, parseInt(e.target.value, 10) || 1))
+                            )
+                          }
+                          className="w-full h-11 px-3.5 bg-canvas rounded-[18px] text-ink text-[14px] focus:outline-none focus:bg-surface-alt font-medium"
+                        />
+                        <span className="text-[12px] text-mid-gray absolute right-3 pointer-events-none">
+                          ª parcela
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Total de Parcelas */}
+                    <div className="flex flex-col gap-1.5">
+                      <label
+                        className="text-[12px] uppercase text-mid-gray tracking-wider font-medium"
+                        htmlFor="installment-total"
+                      >
+                        Total de parcelas
+                      </label>
+                      <div className="relative flex items-center">
+                        <input
+                          id="installment-total"
+                          type="number"
+                          min={2}
+                          max={48}
+                          value={installmentTotal}
+                          onChange={(e) => {
+                            const val = Math.max(2, parseInt(e.target.value, 10) || 2);
+                            setInstallmentTotal(val);
+                            if (installmentNumber > val) setInstallmentNumber(val);
+                          }}
+                          className="w-full h-11 px-3.5 bg-canvas rounded-[18px] text-ink text-[14px] focus:outline-none focus:bg-surface-alt font-medium"
+                        />
+                        <span className="text-[12px] text-mid-gray absolute right-3 pointer-events-none">
+                          vezes
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Pills de atalhos comuns */}
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <span className="text-[11px] text-mid-gray mr-1">Atalhos:</span>
+                    {[2, 3, 4, 5, 6, 10, 12].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => {
+                          setInstallmentTotal(num);
+                          if (installmentNumber > num) setInstallmentNumber(num);
+                        }}
+                        className={`h-7 px-2.5 rounded-full text-[12px] font-medium transition-all cursor-pointer ${
+                          installmentTotal === num
+                            ? "bg-ink text-white shadow-xs"
+                            : "bg-surface-alt text-mid-gray hover:text-ink"
+                        }`}
+                      >
+                        {num}x
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Resumo do parcelamento */}
+                  <div className="p-3 rounded-2xl bg-canvas flex flex-col gap-1 text-[12px]">
+                    <div className="flex justify-between">
+                      <span className="text-mid-gray">
+                        Valor desta parcela ({installmentNumber}/{installmentTotal})
+                      </span>
+                      <span className="font-semibold text-ink">R$ {amount || "0,00"}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-mid-gray">Valor total da compra</span>
+                      <span className="font-semibold text-ink">
+                        R${" "}
+                        {(
+                          (parseFloat((amount || "0").replace(/\./g, "").replace(",", ".")) || 0) *
+                          installmentTotal
+                        ).toLocaleString("pt-BR", {
+                          minimumFractionDigits: 2,
+                          maximumFractionDigits: 2,
+                        })}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
             {/* Configurações Avançadas & Orçamento Card */}
             <div className="bg-paper rounded-[24px] shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.08)] p-5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
@@ -650,13 +815,13 @@ export default function EditarLancamentoPage() {
               </div>
             </div>
 
-            {/* Anotações, Tags & Comprovante Card */}
+            {/* Anotações & Tags Card */}
             <div className="bg-paper rounded-[24px] shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.08)] p-5 flex flex-col gap-3">
               <div className="flex items-center justify-between">
                 <span className="text-[12px] uppercase text-mid-gray tracking-wider font-medium">
-                  Notas &amp; Anexos
+                  Anotações &amp; Tags
                 </span>
-                <span className="text-[12px] text-mid-gray">3 anexos fiscais</span>
+                <span className="material-symbols-outlined text-mid-gray text-[18px]">sell</span>
               </div>
 
               {/* Anotações Textarea */}
@@ -747,42 +912,13 @@ export default function EditarLancamentoPage() {
                   </button>
                 </div>
               </div>
-
-              {/* Comprovante Fiscal Attachment Item */}
-              <div className="flex flex-col gap-1.5 pt-1">
-                <span className="text-[12px] uppercase text-mid-gray tracking-wider font-medium">
-                  Comprovante / Nota Fiscal
-                </span>
-                <div className="p-3 bg-canvas rounded-[18px] flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2.5 min-w-0">
-                    <div className="w-8 h-8 rounded-[10px] bg-paper flex items-center justify-center shrink-0 shadow-sm text-mid-gray">
-                      <span className="material-symbols-outlined text-[18px]">receipt_long</span>
-                    </div>
-                    <div className="flex flex-col min-w-0">
-                      <span className="text-[13px] font-medium text-ink truncate">
-                        Comprovante Fiscal
-                      </span>
-                      <span className="text-[12px] text-mid-gray">Nenhum arquivo anexado</span>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    <button
-                      className="h-7 px-2.5 rounded-[18px] bg-paper hover:bg-surface-container text-ink text-[13px] shadow-sm transition-colors font-medium cursor-pointer"
-                      type="button"
-                      onClick={() => showToast("Funcionalidade de upload em desenvolvimento")}
-                    >
-                      Anexar
-                    </button>
-                  </div>
-                </div>
-              </div>
             </div>
 
             {/* Actions Group */}
             <div className="flex flex-col gap-2 pt-2">
               {/* Primary Save Button */}
               <button
-                className="w-full h-11 rounded-[18px] bg-ink text-paper text-[14px] font-medium flex items-center justify-center gap-2 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1)] hover:bg-ink-soft active:scale-[0.99] transition-all"
+                className="w-full h-11 rounded-[18px] bg-ink text-paper text-[14px] font-medium flex items-center justify-center gap-2 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_3px_rgba(0,0,0,0.1)] hover:bg-ink-soft active:scale-[0.99] transition-all cursor-pointer"
                 onClick={handleSave}
                 type="button"
                 disabled={isSaving}
@@ -797,9 +933,19 @@ export default function EditarLancamentoPage() {
                 <span>{isSaving ? "Salvando Alterações..." : "Salvar Alterações"}</span>
               </button>
 
+              {/* Dividir com terceiros / amigos Button */}
+              <button
+                className="w-full h-11 rounded-[18px] bg-paper text-ink text-[14px] font-medium flex items-center justify-center gap-2 border border-black/10 shadow-xs hover:bg-canvas active:scale-[0.99] transition-all cursor-pointer"
+                onClick={() => router.push(`/extrato/${transaction.display_id}/dividir`)}
+                type="button"
+              >
+                <span className="material-symbols-outlined text-[18px]">call_split</span>
+                <span>Dividir com terceiros / amigos</span>
+              </button>
+
               {/* Secondary Cancel Button */}
               <button
-                className="w-full h-11 rounded-[18px] bg-paper text-ink text-[14px] font-medium flex items-center justify-center gap-2 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_2px_rgba(0,0,0,0.05)] hover:bg-canvas active:scale-[0.99] transition-all"
+                className="w-full h-11 rounded-[18px] bg-paper text-ink text-[14px] font-medium flex items-center justify-center gap-2 shadow-[0_0_0_1px_rgba(23,23,23,0.05),0_1px_2px_rgba(0,0,0,0.05)] hover:bg-canvas active:scale-[0.99] transition-all cursor-pointer"
                 onClick={() => router.back()}
                 type="button"
               >
