@@ -23,6 +23,7 @@ export default function EditarCartaoPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [resolvedCardId, setResolvedCardId] = useState<string>(cardId);
   const [submitStatus, setSubmitStatus] = useState<"idle" | "syncing" | "success" | "error">("idle");
   const [errorMessage, setErrorMessage] = useState("");
 
@@ -46,10 +47,12 @@ export default function EditarCartaoPage() {
         if (resp.sucesso && resp.dados) {
           const alvo = resp.dados.find((c) => c.id === cardId || c.name === decodeURIComponent(cardId));
           if (alvo) {
+            setResolvedCardId(alvo.id);
             const override = overrides[alvo.id] || overrides[alvo.name];
             preencherDados(override ? { ...alvo, ...override } : alvo);
           } else if (resp.dados.length > 0) {
             const primeiro = resp.dados[0];
+            setResolvedCardId(primeiro.id);
             const override = overrides[primeiro.id] || overrides[primeiro.name];
             preencherDados(override ? { ...primeiro, ...override } : primeiro);
           }
@@ -117,8 +120,9 @@ export default function EditarCartaoPage() {
         ? parseFloat(limit.replace(/\./g, "").replace(",", "."))
         : 0;
 
+      const targetId = resolvedCardId || cardId;
       const payloadAtualizado = {
-        id: cardId,
+        id: targetId,
         name: nickname.trim(),
         closing_day: Number(closeDay) || 3,
         due_day: Number(dueDay) || 10,
@@ -134,7 +138,8 @@ export default function EditarCartaoPage() {
       try {
         const raw = localStorage.getItem("guara:cartoes_overrides");
         const overrides = raw ? JSON.parse(raw) : {};
-        overrides[cardId] = payloadAtualizado;
+        overrides[targetId] = payloadAtualizado;
+        if (cardId) overrides[cardId] = payloadAtualizado;
         if (nickname.trim()) {
           overrides[nickname.trim()] = payloadAtualizado;
         }
@@ -174,14 +179,17 @@ export default function EditarCartaoPage() {
     setErrorMessage("");
 
     try {
+      const targetId = resolvedCardId || cardId;
+
       // 1. Remove do backend Guará IA
-      await excluirCartao(cardId);
+      await excluirCartao(targetId);
 
       // 2. Remove de overrides salvos localmente
       try {
         const raw = localStorage.getItem("guara:cartoes_overrides");
         if (raw) {
           const overrides = JSON.parse(raw);
+          delete overrides[targetId];
           delete overrides[cardId];
           if (nickname) delete overrides[nickname];
           localStorage.setItem("guara:cartoes_overrides", JSON.stringify(overrides));

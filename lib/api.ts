@@ -546,12 +546,35 @@ export async function cadastrarCartao(dados: NovoCartaoInput): Promise<{ sucesso
  * Remove um cartão cadastrado no backend
  */
 export async function excluirCartao(idOuNome: string): Promise<{ sucesso: boolean; mensagem: string }> {
-  const res = await fetch(`${API_BASE_URL}/api/cards?id=${encodeURIComponent(idOuNome)}`, {
-    method: 'DELETE',
-    headers: {
-      'Content-Type': 'application/json',
-    },
-  });
+  let res: Response;
+
+  try {
+    res = await fetch(`${API_BASE_URL}/api/cards/remover`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ id: idOuNome, name: idOuNome }),
+    });
+
+    // Se o backend for uma versão que não tenha a rota POST /remover, tenta DELETE
+    if (res.status === 404 || res.status === 405) {
+      res = await fetch(`${API_BASE_URL}/api/cards?id=${encodeURIComponent(idOuNome)}`, {
+        method: 'DELETE',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+    }
+  } catch (_networkErr) {
+    // Fallback para rota DELETE caso a rota POST falhe em nível de rede
+    res = await fetch(`${API_BASE_URL}/api/cards?id=${encodeURIComponent(idOuNome)}`, {
+      method: 'DELETE',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
