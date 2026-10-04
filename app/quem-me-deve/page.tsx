@@ -49,12 +49,13 @@ export default function QuemMeDevePage() {
   const carregarDados = useCallback(async (mes?: string) => {
     setIsLoading(true);
     try {
+      const mesParam = mes !== "todos" ? (mes || mesSelecionado) : undefined;
       const [respPessoas, respResumo] = await Promise.all([
-        obterPessoas(undefined, mes !== "todos" ? (mes || mesSelecionado) : undefined).catch((err) => {
+        obterPessoas(undefined, mesParam).catch((err) => {
           console.warn("Erro ao buscar pessoas da API:", err);
           return { sucesso: false, dados: [] };
         }),
-        obterResumoQuemMeDeve().catch((err) => {
+        obterResumoQuemMeDeve(mesParam).catch((err) => {
           console.warn("Erro ao buscar resumo de dívidas:", err);
           return { sucesso: false, dados: null };
         }),
@@ -120,7 +121,11 @@ export default function QuemMeDevePage() {
   const abrirModalBaixa = (pessoa: PessoaItem) => {
     setPessoaSelecionadaParaBaixa(pessoa);
     setModoBaixa("total");
-    setValorBaixa(pessoa.saldoDevedor.toFixed(2).replace(".", ","));
+    const valorSugerido =
+      mesSelecionado !== "todos" && pessoa.saldoDevedorMes !== undefined && pessoa.saldoDevedorMes > 0
+        ? pessoa.saldoDevedorMes
+        : pessoa.saldoDevedor;
+    setValorBaixa(valorSugerido.toFixed(2).replace(".", ","));
     setNotaBaixa("");
     setBaixaStatus("idle");
     setFeedbackMensagem("");
@@ -177,9 +182,16 @@ export default function QuemMeDevePage() {
     return (val || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   };
 
-  const totalAReceber = resumo?.totalAReceber ?? pessoas.reduce((acc, p) => acc + p.saldoDevedor, 0);
-  const totalPago = resumo?.totalPago ?? 350.0;
-  const pendentesDestaFatura = pessoas.filter((p) => p.saldoDevedor > 0);
+  const totalAReceber =
+    mesSelecionado !== "todos"
+      ? (resumo?.totalAReceberMes ?? resumo?.totalAReceber ?? pessoas.reduce((acc, p) => acc + (p.saldoDevedorMes ?? p.saldoDevedor), 0))
+      : (resumo?.totalAReceberGeral ?? resumo?.totalAReceber ?? pessoas.reduce((acc, p) => acc + p.saldoDevedor, 0));
+
+  const totalPago = resumo?.totalPago ?? 0;
+  const pendentesDestaFatura =
+    mesSelecionado !== "todos"
+      ? pessoas.filter((p) => (p.saldoDevedorMes && p.saldoDevedorMes > 0) || (p.itensInclusos && p.itensInclusos.length > 0))
+      : pessoas.filter((p) => p.saldoDevedor > 0);
 
   return (
     <main className="flex-1 flex flex-col relative w-full pt-16 pb-36 bg-[#f9f9f9]">
@@ -238,7 +250,7 @@ export default function QuemMeDevePage() {
               <div className="flex items-start justify-between gap-3">
                 <div className="flex flex-col">
                   <span className="text-[12px] uppercase tracking-widest text-[#737373] font-medium leading-tight">
-                    Total a receber da fatura
+                    {mesSelecionado === "todos" ? "Total Geral Acumulado" : `Total a receber • Mês ${mesSelecionado}`}
                   </span>
                   <div className="flex items-baseline gap-1 mt-1">
                     <span className="text-[13px] font-medium text-[#171717]">R$</span>
@@ -250,7 +262,7 @@ export default function QuemMeDevePage() {
                 <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#fafafa] border border-black/5">
                   <span className="w-2 h-2 rounded-full bg-[#0a0a0a]"></span>
                   <span className="text-[12px] text-[#0a0a0a] font-semibold">
-                    {resumo?.totalAReceber ? "FATURA ATUAL" : "ATUALIZADO"}
+                    {mesSelecionado === "todos" ? "HISTÓRICO GERAL" : `MÊS ${mesSelecionado}`}
                   </span>
                 </div>
               </div>
@@ -445,12 +457,73 @@ export default function QuemMeDevePage() {
               </div>
             </div>
 
+            {/* Divisão Mês a Mês */}
+            {resumo?.porMes && resumo.porMes.length > 0 && (
+              <section className="flex flex-col gap-2.5">
+                <div className="flex items-center justify-between px-1">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[18px] text-[#0a0a0a]">calendar_view_month</span>
+                    <span className="text-[16px] font-semibold text-[#0a0a0a] tracking-tight">
+                      Divisão Mês a Mês
+                    </span>
+                  </div>
+                  <span className="text-[12px] text-[#737373]">
+                    {resumo.porMes.length} {resumo.porMes.length === 1 ? "mês com pendência" : "meses com pendência"}
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  {resumo.porMes.map((item) => {
+                    const isSelected = mesSelecionado === item.mesAno;
+                    let label = item.mesAno;
+                    try {
+                      const [ano, mes] = item.mesAno.split("-");
+                      const d = new Date(parseInt(ano, 10), parseInt(mes, 10) - 1, 1);
+                      label = d.toLocaleDateString("pt-BR", { month: "short", year: "2-digit" });
+                    } catch {
+                      label = item.mesAno;
+                    }
+
+                    return (
+                      <button
+                        key={item.mesAno}
+                        type="button"
+                        onClick={() => setMesSelecionado(isSelected ? "todos" : item.mesAno)}
+                        className={`p-3.5 rounded-[20px] text-left transition-all border flex flex-col justify-between gap-2.5 ${
+                          isSelected
+                            ? "bg-[#0a0a0a] text-white border-black shadow-xs"
+                            : "bg-white text-[#0a0a0a] border-black/5 hover:border-black/20 shadow-xs"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between w-full">
+                          <span className={`text-[12px] font-semibold capitalize tracking-wide ${isSelected ? "text-neutral-300" : "text-[#737373]"}`}>
+                            {label}
+                          </span>
+                          <span className={`text-[11px] px-2 py-0.5 rounded-full font-medium ${isSelected ? "bg-white/15 text-white" : "bg-[#f5f5f5] text-[#737373]"}`}>
+                            {item.pendentesCount} {item.pendentesCount === 1 ? "pessoa" : "pessoas"}
+                          </span>
+                        </div>
+                        <div>
+                          <span className={`text-[11px] block leading-none mb-1 ${isSelected ? "text-neutral-400" : "text-[#737373]"}`}>
+                            A receber
+                          </span>
+                          <span className="text-[16px] font-semibold tracking-tight">
+                            R$ {formatarMoeda(item.total)}
+                          </span>
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
             {/* Pendentes Desta Fatura */}
             <section className="flex flex-col gap-3">
               <div className="flex items-center justify-between px-1">
                 <div className="flex items-center gap-2">
                   <span className="text-[18px] font-semibold text-[#0a0a0a] tracking-tight">
-                    Pendentes Desta Fatura
+                    {mesSelecionado === "todos" ? "Pendentes Gerais" : `Pendentes • ${mesSelecionado}`}
                   </span>
                   <span className="w-5 h-5 rounded-full bg-[#eeeeee] flex items-center justify-center text-[12px] text-[#0a0a0a] font-semibold">
                     {pendentesDestaFatura.length}
@@ -475,7 +548,7 @@ export default function QuemMeDevePage() {
                   </span>
                   <span className="font-medium text-[#0a0a0a]">Nenhuma pendência em aberto</span>
                   <p className="text-[12px] max-w-xs text-[#737373]">
-                    Não há amigos devendo valores no momento. Você pode dividir uma compra no extrato a qualquer instante.
+                    Não há amigos devendo valores {mesSelecionado !== "todos" ? `no mês ${mesSelecionado}` : "no momento"}. Você pode dividir uma compra no extrato a qualquer instante.
                   </p>
                 </div>
               ) : (
@@ -496,11 +569,16 @@ export default function QuemMeDevePage() {
                       </div>
                       <div className="flex flex-col items-end">
                         <span className="text-[18px] font-semibold text-[#0a0a0a]">
-                          R$ {formatarMoeda(pessoa.saldoDevedor)}
+                          R$ {formatarMoeda(mesSelecionado !== "todos" ? (pessoa.saldoDevedorMes ?? pessoa.saldoDevedor) : pessoa.saldoDevedor)}
                         </span>
-                        <span className="px-2 py-0.5 rounded-full bg-[#fafafa] border border-black/5 text-[12px] text-[#737373] mt-0.5">
-                          Pendente
+                        <span className="px-2 py-0.5 rounded-full bg-[#fafafa] border border-black/5 text-[11px] text-[#737373] mt-0.5">
+                          {mesSelecionado !== "todos" ? `Mês ${mesSelecionado}` : "Pendente"}
                         </span>
+                        {mesSelecionado !== "todos" && pessoa.saldoDevedorTotal !== undefined && pessoa.saldoDevedorTotal !== (pessoa.saldoDevedorMes ?? pessoa.saldoDevedor) && (
+                          <span className="text-[11px] text-[#737373] mt-0.5">
+                            Total geral: R$ {formatarMoeda(pessoa.saldoDevedorTotal)}
+                          </span>
+                        )}
                       </div>
                     </div>
 
@@ -669,13 +747,19 @@ export default function QuemMeDevePage() {
                   <div className="flex flex-col items-end shrink-0">
                     <span
                       className={`text-[14px] font-semibold ${
-                        p.saldoDevedor > 0 ? "text-[#0a0a0a]" : "text-[#737373] font-normal"
+                        (mesSelecionado !== "todos" ? (p.saldoDevedorMes ?? p.saldoDevedor) : p.saldoDevedor) > 0
+                          ? "text-[#0a0a0a]"
+                          : "text-[#737373] font-normal"
                       }`}
                     >
-                      R$ {formatarMoeda(p.saldoDevedor)}
+                      R$ {formatarMoeda(mesSelecionado !== "todos" ? (p.saldoDevedorMes ?? p.saldoDevedor) : p.saldoDevedor)}
                     </span>
                     <span className="text-[12px] text-[#737373]">
-                      {p.saldoDevedor > 0 ? "Em aberto" : "Zerado"}
+                      {(mesSelecionado !== "todos" ? (p.saldoDevedorMes ?? p.saldoDevedor) : p.saldoDevedor) > 0
+                        ? mesSelecionado !== "todos"
+                          ? `Mês ${mesSelecionado}`
+                          : "Em aberto"
+                        : "Zerado"}
                     </span>
                   </div>
                 </div>

@@ -45,6 +45,10 @@ export default function DividirComAmigosPage() {
         );
         const found = item || (extratoRes.dados?.totalLancamentos === 1 ? extratoRes.dados?.itens?.[0] : undefined);
         if (found && mounted) {
+          if (found.entry_type === "income") {
+            router.replace(`/extrato/${found.display_id || params.id}`);
+            return;
+          }
           setTransaction(found);
         }
 
@@ -75,7 +79,7 @@ export default function DividirComAmigosPage() {
     return () => {
       mounted = false;
     };
-  }, [params.id]);
+  }, [params.id, router]);
 
   const baseAmount = transaction ? Number(transaction.total_amount) : 0;
 

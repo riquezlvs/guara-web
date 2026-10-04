@@ -934,14 +934,16 @@ export default function EditarLancamentoPage() {
               </button>
 
               {/* Dividir com terceiros / amigos Button */}
-              <button
-                className="w-full h-11 rounded-[18px] bg-paper text-ink text-[14px] font-medium flex items-center justify-center gap-2 border border-black/10 shadow-xs hover:bg-canvas active:scale-[0.99] transition-all cursor-pointer"
-                onClick={() => router.push(`/extrato/${transaction.display_id}/dividir`)}
-                type="button"
-              >
-                <span className="material-symbols-outlined text-[18px]">call_split</span>
-                <span>Dividir com terceiros / amigos</span>
-              </button>
+              {entryType !== "income" && (
+                <button
+                  className="w-full h-11 rounded-[18px] bg-paper text-ink text-[14px] font-medium flex items-center justify-center gap-2 border border-black/10 shadow-xs hover:bg-canvas active:scale-[0.99] transition-all cursor-pointer"
+                  onClick={() => router.push(`/extrato/${transaction.display_id}/dividir`)}
+                  type="button"
+                >
+                  <span className="material-symbols-outlined text-[18px]">call_split</span>
+                  <span>Dividir com terceiros / amigos</span>
+                </button>
+              )}
 
               {/* Secondary Cancel Button */}
               <button

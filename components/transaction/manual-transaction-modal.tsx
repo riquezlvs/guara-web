@@ -57,6 +57,11 @@ export function ManualTransactionModal({
   const [weekendRule, setWeekendRule] = useState<"anticipate" | "postpone">("anticipate");
   const [incomeType, setIncomeType] = useState<"salary" | "freelance" | "benefit" | "other">("salary");
 
+  // Divisão com amigos (Quem Me Deve)
+  const [isSplit, setIsSplit] = useState(false);
+  const [splitFriendName, setSplitFriendName] = useState("");
+  const [splitMode, setSplitMode] = useState<"half" | "full">("half");
+
   // Dados carregados do sistema
   const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
   const [accounts, setAccounts] = useState<Array<{ id: string; name: string; type: string; balance: number }>>([]);
@@ -251,6 +256,14 @@ export function ManualTransactionModal({
       dayOfMonth: isRecurring ? diaNum : undefined,
       weekendRule: isRecurring ? weekendRuleFinal : undefined,
       incomeType: isIncome ? incomeType : undefined,
+      thirdPartyName: isSplit && splitFriendName.trim() ? splitFriendName.trim() : undefined,
+      thirdPartyNames: isSplit && splitFriendName.trim() ? [splitFriendName.trim()] : undefined,
+      myShareAmount: isSplit && splitFriendName.trim()
+        ? (splitMode === "full" ? 0 : Math.round((valorNumerico / 2) * 100) / 100)
+        : undefined,
+      thirdPartyShareAmount: isSplit && splitFriendName.trim()
+        ? (splitMode === "full" ? valorNumerico : Math.round((valorNumerico - Math.round((valorNumerico / 2) * 100) / 100) * 100) / 100)
+        : undefined,
       safeToSpend: {
         current: saldoAtual,
         projected: novoProjetado,
@@ -668,6 +681,58 @@ export function ManualTransactionModal({
             className="h-11 rounded-[16px] bg-[#fafafa] border border-black/[0.08] text-[14px] text-[#0a0a0a] px-3 focus:outline-none focus:ring-1 focus:ring-black"
           />
         </div>
+
+        {/* Divisão com Amigo (Quem Me Deve) */}
+        {entryType === "expense" && (
+          <div className="flex flex-col gap-2 p-3.5 rounded-[20px] bg-[#fafafa] border border-black/[0.06]">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[18px] text-[#0a0a0a]">group</span>
+                <span className="text-[13px] font-medium text-[#0a0a0a]">Dividir este gasto com alguém</span>
+              </div>
+              <input
+                type="checkbox"
+                checked={isSplit}
+                onChange={(e) => setIsSplit(e.target.checked)}
+                className="w-4 h-4 rounded text-black focus:ring-black cursor-pointer"
+              />
+            </div>
+            {isSplit && (
+              <div className="flex flex-col gap-2.5 pt-2 border-t border-black/[0.04] animate-in fade-in duration-150">
+                <div className="flex flex-col gap-1">
+                  <label className="text-[11px] font-medium text-[#737373]">Nome de quem deve:</label>
+                  <Input
+                    type="text"
+                    placeholder="Ex: Maria Castro, João..."
+                    value={splitFriendName}
+                    onChange={(e) => setSplitFriendName(e.target.value)}
+                    className="h-10 rounded-[14px] bg-white border-black/[0.08] text-[13px] text-[#0a0a0a] px-3"
+                  />
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSplitMode("half")}
+                    className={`h-8 px-2 rounded-[12px] text-[12px] font-medium transition-all ${
+                      splitMode === "half" ? "bg-black text-white" : "bg-white text-[#737373] border border-black/5"
+                    }`}
+                  >
+                    Meio a meio (50%)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSplitMode("full")}
+                    className={`h-8 px-2 rounded-[12px] text-[12px] font-medium transition-all ${
+                      splitMode === "full" ? "bg-black text-white" : "bg-white text-[#737373] border border-black/5"
+                    }`}
+                  >
+                    Amigo deve tudo (100%)
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Observação Opcional */}
         <div className="flex flex-col gap-1.5">

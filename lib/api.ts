@@ -179,6 +179,10 @@ export interface TransactionDraft {
   dayOfMonth?: number;
   incomeType?: 'salary' | 'freelance' | 'benefit' | 'other' | string;
   weekendRule?: 'anticipate' | 'postpone' | 'exact' | string;
+  thirdPartyName?: string | null;
+  thirdPartyNames?: string[];
+  myShareAmount?: number | null;
+  thirdPartyShareAmount?: number | null;
   safeToSpend: {
     current: number;
     projected: number;
@@ -946,7 +950,10 @@ export interface PessoaItem {
   created_at?: string;
   initials: string;
   saldoDevedor: number;
+  saldoDevedorMes?: number;
+  saldoDevedorTotal?: number;
   totalOriginal: number;
+  totalMesOriginal?: number;
   totalPago: number;
   status: 'Em aberto' | 'Zerado';
   itensInclusos?: Array<{
@@ -959,12 +966,23 @@ export interface PessoaItem {
 
 export interface ResumoQuemMeDeve {
   totalAReceber: number;
+  totalAReceberMes?: number;
+  totalAReceberGeral?: number;
   faturaCartao: number;
   nomeCartao: string;
   percentualFatura: number;
   pendentesCount: number;
+  pendentesCountMes?: number;
+  pendentesCountGeral?: number;
   totalPago: number;
-  devedores: Array<{
+  mesReferencia?: string;
+  porMes?: Array<{
+    mesAno: string;
+    rotulo: string;
+    total: number;
+    pendentesCount: number;
+  }>;
+  devedores?: Array<{
     nome: string;
     valor: number;
     total?: number;
@@ -1074,8 +1092,9 @@ export async function registrarPagamentoDivida(params: {
 /**
  * Obtém resumo estatístico consolidado para o card de topo de Quem Me Deve
  */
-export async function obterResumoQuemMeDeve(): Promise<{ sucesso: boolean; dados: ResumoQuemMeDeve }> {
-  const res = await fetch(`${API_BASE_URL}/api/debts/summary`, {
+export async function obterResumoQuemMeDeve(mesAno?: string): Promise<{ sucesso: boolean; dados: ResumoQuemMeDeve }> {
+  const query = mesAno ? `?mesAno=${encodeURIComponent(mesAno)}` : '';
+  const res = await fetch(`${API_BASE_URL}/api/debts/summary${query}`, {
     method: 'GET',
     headers: {
       'Content-Type': 'application/json',

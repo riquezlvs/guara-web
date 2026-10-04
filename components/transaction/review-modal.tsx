@@ -277,6 +277,31 @@ export function ReviewModal({ draft: initialDraft, isOpen, onClose, onSuccess }:
 
             {/* Field Breakdown */}
             <div className="flex flex-col divide-y divide-[#e5e5e5]">
+              {/* Divisão com Amigos / Terceiro */}
+              {(draft.thirdPartyNames?.length || draft.thirdPartyName) && (
+                <div className="py-2.5 flex items-center justify-between bg-amber-50/80 -mx-2 px-2.5 rounded-[14px] border border-amber-200/60 my-1">
+                  <div className="flex items-center gap-2.5 min-w-0">
+                    <div className="w-7 h-7 rounded-full bg-amber-200/70 flex items-center justify-center text-amber-900 shrink-0">
+                      <span className="material-symbols-outlined text-[16px]">group</span>
+                    </div>
+                    <div className="flex flex-col min-w-0">
+                      <span className="text-[13px] font-semibold text-amber-950 truncate">
+                        Dividido com {draft.thirdPartyNames?.join(", ") || draft.thirdPartyName}
+                      </span>
+                      <span className="text-[11px] text-amber-800">
+                        Sua parte: R$ {(draft.myShareAmount ?? Math.round((draft.totalAmount / ((draft.thirdPartyNames?.length || 1) + 1)) * 100) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                      </span>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end shrink-0 pl-2">
+                    <span className="text-[10px] uppercase font-bold text-amber-700">A Receber</span>
+                    <span className="text-[13px] font-bold text-amber-950">
+                      R$ {(draft.thirdPartyShareAmount ?? Math.round((draft.totalAmount - (draft.myShareAmount ?? Math.round((draft.totalAmount / ((draft.thirdPartyNames?.length || 1) + 1)) * 100) / 100)) * 100) / 100).toLocaleString("pt-BR", { minimumFractionDigits: 2 })}
+                    </span>
+                  </div>
+                </div>
+              )}
+
               {/* Categoria */}
               <div
                 onClick={() => setIsAdjustMode(true)}

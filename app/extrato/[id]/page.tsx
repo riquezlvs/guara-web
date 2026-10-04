@@ -369,13 +369,15 @@ export default function TransactionDetailsPage() {
             <span className="material-symbols-outlined text-[18px]">edit_note</span>
             Editar dados da transação
           </Link>
-          <Link
-            href={`/extrato/${params.id || transaction.display_id}/dividir`}
-            className="w-full h-12 rounded-[18px] bg-white text-[#0a0a0a] text-[13px] font-medium flex items-center justify-center gap-2 shadow-sm hover:bg-[#fafafa] active:scale-[0.99] transition-all"
-          >
-            <span className="material-symbols-outlined text-[18px]">call_split</span>
-            Dividir despesa com amigos
-          </Link>
+          {!isIncome && (
+            <Link
+              href={`/extrato/${params.id || transaction.display_id}/dividir`}
+              className="w-full h-12 rounded-[18px] bg-white text-[#0a0a0a] text-[13px] font-medium flex items-center justify-center gap-2 shadow-sm hover:bg-[#fafafa] active:scale-[0.99] transition-all"
+            >
+              <span className="material-symbols-outlined text-[18px]">call_split</span>
+              Dividir despesa com amigos
+            </Link>
+          )}
           <button
             type="button"
             onClick={() => setShowDeleteModal(true)}
