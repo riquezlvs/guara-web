@@ -210,7 +210,9 @@ export interface PreviewResponse {
   }>;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
+// Todas as chamadas do cliente devem passar pelo proxy interno do Next.js (/api)
+// para que a API_SECRET_KEY seja injetada com segurança no servidor, prevenindo 401 e problemas de CORS.
+const API_BASE_URL = '';
 
 /**
  * Interpreta texto ou áudio via IA sem salvar no banco (para tela intermediária de confirmação)

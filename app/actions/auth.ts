@@ -3,7 +3,10 @@
 import { redirect } from 'next/navigation';
 import { assinarTokenSessao, salvarSessaoCookie, encerrarSessao } from '@/lib/auth';
 
-const CORE_API_URL = process.env.CORE_API_URL || 'http://localhost:3001';
+function obterCoreApiUrl(): string {
+  const url = (process.env.CORE_API_URL || 'http://localhost:3001').trim();
+  return url.replace(/\/+$/, '').replace(/\/api$/, '');
+}
 const API_SECRET_KEY =
   process.env.API_SECRET_KEY ||
   (process.env.NODE_ENV !== 'production'
@@ -52,7 +55,7 @@ export async function loginComTelegramTokenAction(
   }
 
   try {
-    const res = await fetch(`${CORE_API_URL}/api/auth/telegram-verify`, {
+    const res = await fetch(`${obterCoreApiUrl()}/api/auth/telegram-verify`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',

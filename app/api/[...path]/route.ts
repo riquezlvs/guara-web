@@ -18,6 +18,11 @@ const API_SECRET_KEY =
     ? 'guara-ia-chave-secreta-padrao-dev-32chars!'
     : '');
 
+function obterCoreApiUrl(): string {
+  const url = (process.env.CORE_API_URL || 'http://localhost:3001').trim();
+  return url.replace(/\/+$/, '').replace(/\/api$/, '');
+}
+
 interface RouteContext {
   params: Promise<{ path: string[] }>;
 }
@@ -45,7 +50,8 @@ async function handleProxyRequest(
     }
   }
 
-  const urlDestino = new URL(`/api/${caminhoApi}`, CORE_API_URL);
+  const baseUrl = obterCoreApiUrl();
+  const urlDestino = new URL(`${baseUrl}/api/${caminhoApi}`);
   // Preserva query parameters
   request.nextUrl.searchParams.forEach((valor, chave) => {
     urlDestino.searchParams.set(chave, valor);
