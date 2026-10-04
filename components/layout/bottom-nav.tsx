@@ -401,7 +401,7 @@ export function BottomNav() {
       )}
 
       {/* Barra Inferior com Entrada Rápida de Texto e Áudio */}
-      {!pathname.includes("/editar") && !pathname.includes("/dividir") && !pathname.includes("/novo") && (
+      {pathname !== "/login" && !pathname.includes("/editar") && !pathname.includes("/dividir") && !pathname.includes("/novo") && (
         <div className="fixed bottom-0 w-full z-40 pb-safe pointer-events-none">
           <div className="px-4 pb-5 flex flex-col gap-2 w-full max-w-md mx-auto">
             {/* Linha com Input Suspenso + Botão (+) com Speed Dial */}

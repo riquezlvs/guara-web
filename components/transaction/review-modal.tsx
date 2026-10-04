@@ -470,6 +470,34 @@ export function ReviewModal({ draft: initialDraft, isOpen, onClose, onSuccess }:
                   </div>
                 )}
 
+                {/* Seletor de Conta / Caixinha */}
+                {draft.availableAccounts && draft.availableAccounts.length > 0 && (
+                  <div className="flex flex-col gap-1">
+                    <label className="text-[10px] uppercase font-medium text-[#737373]">Conta / Bolso / Caixinha</label>
+                    <select
+                      value={draft.accountId || ""}
+                      onChange={(e) => {
+                        const id = e.target.value;
+                        const acc = draft.availableAccounts?.find((a) => a.id === id);
+                        setDraft((prev) => ({
+                          ...prev,
+                          accountId: id || undefined,
+                          accountName: acc?.name || prev.accountName,
+                          accountBalance: acc?.balance ?? prev.accountBalance,
+                        }));
+                      }}
+                      className="bg-white h-8 text-[13px] rounded-[10px] px-2 border border-black/10 focus:outline-none"
+                    >
+                      <option value="">Selecione uma conta...</option>
+                      {draft.availableAccounts.map((a) => (
+                        <option key={a.id} value={a.id}>
+                          {a.name} (Saldo: R$ {Number(a.balance || 0).toLocaleString("pt-BR", { minimumFractionDigits: 2 })})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {/* Se for Receita: Alternar Recorrência */}
                 {isIncome && (
                   <div className="flex items-center justify-between p-2.5 rounded-[12px] bg-white border border-black/5">

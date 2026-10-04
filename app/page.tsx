@@ -396,9 +396,14 @@ export default function Home() {
     // 2. Caixinhas e Renda Fixa vindas do patrimônio (ex: Caixinha Nubank)
     const fixedAccounts = dashboardData?.patrimonio?.fixedIncome?.accounts || [];
     fixedAccounts.forEach((acc, i) => {
-      // Se já não tiver uma meta com o mesmo nome
-      const jaExiste = list.some((item) => item.nome.toLowerCase() === acc.name.toLowerCase());
-      if (!jaExiste) {
+      const existingIdx = list.findIndex((item) => item.nome.toLowerCase() === acc.name.toLowerCase());
+      if (existingIdx !== -1) {
+        // Se já existe uma meta com o mesmo nome, atualiza com o saldo real da conta
+        list[existingIdx].saldo = acc.balance;
+        if (list[existingIdx].alvo && list[existingIdx].alvo! > 0) {
+          list[existingIdx].percentual = Math.round((acc.balance / list[existingIdx].alvo!) * 100);
+        }
+      } else {
         list.push({
           id: `fixed-${i}-${acc.name}`,
           nome: acc.name,

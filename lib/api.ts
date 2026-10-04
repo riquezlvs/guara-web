@@ -210,7 +210,7 @@ export interface PreviewResponse {
   }>;
 }
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001';
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || '';
 
 /**
  * Interpreta texto ou áudio via IA sem salvar no banco (para tela intermediária de confirmação)

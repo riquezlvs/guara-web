@@ -2,12 +2,14 @@
 
 import { usePathname } from "next/navigation";
 import { Badge } from "@/components/ui/badge";
+import { logoutAction } from "@/app/actions/auth";
 
 export function Header() {
   const pathname = usePathname();
 
-  // Esconde o Header global em telas dedicadas que possuem seu próprio cabeçalho / barra superior
+  // Esconde o Header global em telas dedicadas ou na tela de login
   if (
+    pathname === "/login" ||
     pathname.includes("/editar") ||
     pathname.includes("/dividir") ||
     pathname.includes("/novo") ||
