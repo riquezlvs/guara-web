@@ -4,7 +4,11 @@ import { redirect } from 'next/navigation';
 import { assinarTokenSessao, salvarSessaoCookie, encerrarSessao } from '@/lib/auth';
 
 const CORE_API_URL = process.env.CORE_API_URL || 'http://localhost:3001';
-const API_SECRET_KEY = process.env.API_SECRET_KEY || '';
+const API_SECRET_KEY =
+  process.env.API_SECRET_KEY ||
+  (process.env.NODE_ENV !== 'production'
+    ? 'guara-ia-chave-secreta-padrao-dev-32chars!'
+    : '');
 
 interface RespostaLogin {
   sucesso: boolean;

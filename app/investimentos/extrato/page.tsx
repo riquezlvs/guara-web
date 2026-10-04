@@ -15,10 +15,14 @@ export default function ExtratoInvestimentosPage() {
   const [busca, setBusca] = useState("");
   const [extratoData, setExtratoData] = useState<ExtratoInvestimentosResponse["dados"] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<"syncing" | "synced" | "error">("syncing");
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
 
   const carregarExtrato = useCallback(async () => {
     setIsLoading(true);
+    setSyncStatus("syncing");
+    setSyncError(null);
     try {
       const resp = await obterExtratoInvestimentos({
         tipo: filtroTipo,
@@ -26,9 +30,16 @@ export default function ExtratoInvestimentosPage() {
       });
       if (resp.sucesso && resp.dados) {
         setExtratoData(resp.dados);
+        setSyncStatus("synced");
+      } else {
+        setSyncStatus("error");
+        setSyncError("Falha ao obter extrato de investimentos");
       }
-    } catch (err) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Backend offline ou não conectado";
       console.warn("Backend offline ao obter extrato de investimentos, usando contingência local:", err);
+      setSyncStatus("error");
+      setSyncError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -125,12 +136,41 @@ export default function ExtratoInvestimentosPage() {
             <span className="material-symbols-outlined text-mid-gray text-[18px]">expand_more</span>
           </button>
 
-          <div className="flex items-center gap-1.5 bg-surface-alt px-2.5 py-1 rounded-[18px]">
-            <span className="w-2 h-2 rounded-full bg-ink"></span>
-            <span className="font-caption text-caption text-mid-gray uppercase tracking-widest text-[10px]">
-              Sincronizado
+          <button
+            type="button"
+            onClick={() => carregarExtrato()}
+            title={
+              syncStatus === "error"
+                ? `Erro de sincronização: ${syncError || "Sem conexão"}. Clique para tentar novamente.`
+                : syncStatus === "syncing"
+                ? "Sincronizando com o backend..."
+                : "Sincronizado com sucesso. Clique para atualizar."
+            }
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-[18px] transition-all cursor-pointer active:scale-95 ${
+              syncStatus === "error"
+                ? "bg-rose-50 text-rose-700 shadow-[0_0_0_1px_rgba(244,63,94,0.3)] hover:bg-rose-100"
+                : syncStatus === "syncing"
+                ? "bg-amber-50 text-amber-700 shadow-[0_0_0_1px_rgba(245,158,11,0.3)]"
+                : "bg-surface-alt hover:bg-surface-alt/80 text-mid-gray"
+            }`}
+          >
+            <span
+              className={`w-2 h-2 rounded-full ${
+                syncStatus === "error"
+                  ? "bg-rose-500 animate-pulse"
+                  : syncStatus === "syncing"
+                  ? "bg-amber-500 animate-pulse"
+                  : "bg-ink"
+              }`}
+            />
+            <span className="font-caption text-caption uppercase tracking-widest text-[10px]">
+              {syncStatus === "error"
+                ? "Erro"
+                : syncStatus === "syncing"
+                ? "Sincronizando"
+                : "Sincronizado"}
             </span>
-          </div>
+          </button>
         </div>
 
         {/* Resumo Consolidado do Mês Card */}

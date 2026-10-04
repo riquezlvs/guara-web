@@ -17,6 +17,8 @@ import {
 export default function ExtratoPage() {
   const [extratoData, setExtratoData] = useState<ExtratoResponse["dados"] | null>(null);
   const [isLoadingExtrato, setIsLoadingExtrato] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<"syncing" | "synced" | "error">("syncing");
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [filterPill, setFilterPill] = useState("Todos");
   const [searchQuery, setSearchQuery] = useState("");
   const [isRecorrenciasOpen, setIsRecorrenciasOpen] = useState(true);
@@ -24,6 +26,8 @@ export default function ExtratoPage() {
 
   const carregarExtrato = useCallback(async (mesAno?: string) => {
     setIsLoadingExtrato(true);
+    setSyncStatus("syncing");
+    setSyncError(null);
     try {
       const resp = await obterExtrato(mesAno);
       if (resp.sucesso && resp.dados) {
@@ -70,9 +74,16 @@ export default function ExtratoPage() {
           }
         }
         setExtratoData(resp.dados);
+        setSyncStatus("synced");
+      } else {
+        setSyncStatus("error");
+        setSyncError(resp.mensagem || "Falha ao obter dados do extrato");
       }
-    } catch (err) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Backend offline ou não conectado";
       console.warn("Backend offline ou não conectado ao carregar extrato:", err);
+      setSyncStatus("error");
+      setSyncError(msg);
     } finally {
       setIsLoadingExtrato(false);
     }
@@ -185,10 +196,42 @@ export default function ExtratoPage() {
                 <h1 className="text-[20px] font-semibold text-[#0a0a0a] tracking-tight">
                   Extrato
                 </h1>
-                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-[18px] bg-white shadow-[0_0_0_1px_rgba(23,23,23,0.06)] font-mono text-[11px] text-[#737373]">
-                  <span className={`w-1.5 h-1.5 rounded-full ${isLoadingExtrato ? "bg-amber-500 animate-pulse" : "bg-emerald-500"}`}></span>
-                  {isLoadingExtrato ? "Sincronizando..." : "Sincronizado"}
-                </span>
+                <button
+                  type="button"
+                  onClick={() => carregarExtrato(extratoData?.mesAno)}
+                  title={
+                    syncStatus === "error"
+                      ? `Erro de conexão com o backend: ${syncError || "Offline"}. Clique para tentar novamente.`
+                      : syncStatus === "syncing"
+                      ? "Sincronizando com o backend..."
+                      : "Sincronizado com sucesso. Clique para atualizar."
+                  }
+                  className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-[18px] font-mono text-[11px] transition-all cursor-pointer active:scale-95 ${
+                    syncStatus === "error"
+                      ? "bg-rose-50 text-rose-700 shadow-[0_0_0_1px_rgba(244,63,94,0.3)] hover:bg-rose-100"
+                      : syncStatus === "syncing"
+                      ? "bg-amber-50 text-amber-700 shadow-[0_0_0_1px_rgba(245,158,11,0.3)]"
+                      : "bg-white shadow-[0_0_0_1px_rgba(23,23,23,0.06)] text-[#737373] hover:text-[#0a0a0a]"
+                  }`}
+                >
+                  <span
+                    className={`w-1.5 h-1.5 rounded-full ${
+                      syncStatus === "error"
+                        ? "bg-rose-500 animate-pulse"
+                        : syncStatus === "syncing"
+                        ? "bg-amber-500 animate-pulse"
+                        : "bg-emerald-500"
+                    }`}
+                  />
+                  {syncStatus === "error"
+                    ? "Erro de conexão"
+                    : syncStatus === "syncing"
+                    ? "Sincronizando..."
+                    : "Sincronizado"}
+                  {syncStatus === "error" && (
+                    <span className="material-symbols-outlined text-[12px] leading-none">refresh</span>
+                  )}
+                </button>
               </div>
             </div>
           </div>
@@ -208,6 +251,30 @@ export default function ExtratoPage() {
             </Button>
           </div>
         </div>
+
+        {/* Alerta de erro de conexão */}
+        {syncStatus === "error" && (
+          <div className="p-3 bg-rose-50/90 rounded-[16px] border border-rose-200 flex items-center justify-between gap-3 text-[12px] text-rose-900 animate-in fade-in">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="material-symbols-outlined text-[18px] text-rose-600 shrink-0">
+                cloud_off
+              </span>
+              <div className="min-w-0">
+                <p className="font-semibold text-rose-950 truncate">Sem conexão com o backend</p>
+                <p className="text-[11px] text-rose-700 truncate" title={syncError || undefined}>
+                  {syncError || "Verifique se o backend está em execução na porta 3001."}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => carregarExtrato(extratoData?.mesAno)}
+              className="px-2.5 py-1 bg-white hover:bg-rose-100/60 text-rose-800 text-[11px] font-medium border border-rose-200 rounded-full shrink-0 active:scale-95 transition-all cursor-pointer shadow-sm"
+            >
+              Reconectar
+            </button>
+          </div>
+        )}
 
         {/* Smart Search */}
         <div className="relative w-full">

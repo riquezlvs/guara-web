@@ -340,7 +340,8 @@ export async function obterDashboard(): Promise<DashboardResponse> {
   });
 
   if (!res.ok) {
-    throw new Error(`Erro ao obter dashboard: ${res.status}`);
+    const erroData = await res.json().catch(() => ({}));
+    throw new Error(erroData.mensagem || `Erro ao obter dashboard: ${res.status}`);
   }
 
   return res.json();
@@ -424,7 +425,8 @@ export async function obterExtrato(mesAno?: string, id?: string | number): Promi
   });
 
   if (!res.ok) {
-    throw new Error(`Erro ao obter extrato: ${res.status}`);
+    const erroData = await res.json().catch(() => ({}));
+    throw new Error(erroData.mensagem || `Erro ao obter extrato: ${res.status}`);
   }
 
   return res.json();
@@ -911,7 +913,8 @@ export async function obterExtratoInvestimentos(params?: {
   });
 
   if (!res.ok) {
-    throw new Error(`Erro ao obter extrato de investimentos: ${res.status}`);
+    const erroData = await res.json().catch(() => ({}));
+    throw new Error(erroData.mensagem || `Erro ao obter extrato de investimentos: ${res.status}`);
   }
 
   return res.json();

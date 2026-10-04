@@ -12,7 +12,11 @@ import { cookies } from 'next/headers';
 import { NOME_COOKIE_SESSAO, verificarTokenSessao } from '@/lib/auth';
 
 const CORE_API_URL = process.env.CORE_API_URL || 'http://localhost:3001';
-const API_SECRET_KEY = process.env.API_SECRET_KEY || '';
+const API_SECRET_KEY =
+  process.env.API_SECRET_KEY ||
+  (process.env.NODE_ENV !== 'production'
+    ? 'guara-ia-chave-secreta-padrao-dev-32chars!'
+    : '');
 
 interface RouteContext {
   params: Promise<{ path: string[] }>;

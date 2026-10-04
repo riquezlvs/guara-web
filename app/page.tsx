@@ -47,6 +47,8 @@ function agruparAtividadesRecentes(items: DashboardRecentItem[]): RecentItemGrou
 export default function Home() {
   const [dashboardData, setDashboardData] = useState<DashboardResponse["data"] | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [syncStatus, setSyncStatus] = useState<"syncing" | "synced" | "error">("syncing");
+  const [syncError, setSyncError] = useState<string | null>(null);
   const [isValuesHidden, setIsValuesHidden] = useState(false);
 
   // Interactivity for Evolution Chart
@@ -99,13 +101,22 @@ export default function Home() {
 
   const carregarDashboard = useCallback(async () => {
     setIsLoading(true);
+    setSyncStatus("syncing");
+    setSyncError(null);
     try {
       const resp = await obterDashboard();
       if (resp.sucesso && resp.data) {
         setDashboardData(resp.data);
+        setSyncStatus("synced");
+      } else {
+        setSyncStatus("error");
+        setSyncError(resp.mensagem || "Falha ao obter dados do dashboard");
       }
-    } catch (err) {
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Backend offline ou não conectado";
       console.warn("Backend offline ou não conectado ao carregar dashboard:", err);
+      setSyncStatus("error");
+      setSyncError(msg);
     } finally {
       setIsLoading(false);
     }
@@ -451,10 +462,42 @@ export default function Home() {
                 </span>
               </button>
             </div>
-            <span className="inline-flex items-center gap-1.5 text-[#737373] text-[12px]">
-              <span className={`w-1.5 h-1.5 rounded-full ${isLoading ? "bg-amber-500 animate-pulse" : "bg-emerald-500"}`}></span>
-              {isLoading ? "Sincronizando..." : "Sincronizado"}
-            </span>
+            <button
+              type="button"
+              onClick={() => carregarDashboard()}
+              title={
+                syncStatus === "error"
+                  ? `Erro de conexão com o backend: ${syncError || "Offline"}. Clique para tentar novamente.`
+                  : syncStatus === "syncing"
+                  ? "Sincronizando dados com o servidor..."
+                  : "Sincronizado com sucesso. Clique para atualizar."
+              }
+              className={`inline-flex items-center gap-1.5 text-[12px] font-medium px-2 py-0.5 rounded-full transition-all cursor-pointer active:scale-95 ${
+                syncStatus === "error"
+                  ? "bg-rose-50 text-rose-700 border border-rose-200/80 hover:bg-rose-100"
+                  : syncStatus === "syncing"
+                  ? "bg-amber-50 text-amber-700 border border-amber-200/80"
+                  : "text-[#737373] hover:text-[#0a0a0a] hover:bg-black/5"
+              }`}
+            >
+              <span
+                className={`w-1.5 h-1.5 rounded-full ${
+                  syncStatus === "error"
+                    ? "bg-rose-500 animate-pulse"
+                    : syncStatus === "syncing"
+                    ? "bg-amber-500 animate-pulse"
+                    : "bg-emerald-500"
+                }`}
+              />
+              {syncStatus === "error"
+                ? "Erro de conexão"
+                : syncStatus === "syncing"
+                ? "Sincronizando..."
+                : "Sincronizado"}
+              {syncStatus === "error" && (
+                <span className="material-symbols-outlined text-[13px] leading-none ml-0.5">refresh</span>
+              )}
+            </button>
           </div>
 
           <div className="flex items-baseline gap-2">
@@ -518,6 +561,30 @@ export default function Home() {
               </span>
             )}
           </div>
+
+          {/* Alerta de erro de conexão */}
+          {syncStatus === "error" && (
+            <div className="p-3 bg-rose-50/90 rounded-[16px] border border-rose-200 flex items-center justify-between gap-3 text-[12px] text-rose-900 animate-in fade-in">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="material-symbols-outlined text-[18px] text-rose-600 shrink-0">
+                  cloud_off
+                </span>
+                <div className="min-w-0">
+                  <p className="font-semibold text-rose-950 truncate">Sem conexão com o backend</p>
+                  <p className="text-[11px] text-rose-700 truncate" title={syncError || undefined}>
+                    {syncError || "Verifique se o backend está em execução na porta 3001."}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => carregarDashboard()}
+                className="px-2.5 py-1 bg-white hover:bg-rose-100/60 text-rose-800 text-[11px] font-medium border border-rose-200 rounded-full shrink-0 active:scale-95 transition-all cursor-pointer shadow-sm"
+              >
+                Reconectar
+              </button>
+            </div>
+          )}
         </section>
 
         {/* 2. Natural Language Quick Entry Card */}
