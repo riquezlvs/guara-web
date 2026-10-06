@@ -84,7 +84,10 @@ async function handleProxyRequest(
 
     const headersResposta = new Headers();
     respostaBackend.headers.forEach((valor, chave) => {
-      if (!['transfer-encoding', 'connection'].includes(chave.toLowerCase())) {
+      const lower = chave.toLowerCase();
+      // O fetch nativo descompacta automaticamente gzip/br/deflate.
+      // Repassar 'content-encoding' ou 'content-length' original faz o browser tentar descompactar novamente, gerando ERR_CONTENT_DECODING_FAILED.
+      if (!['transfer-encoding', 'connection', 'content-encoding', 'content-length'].includes(lower)) {
         headersResposta.set(chave, valor);
       }
     });
