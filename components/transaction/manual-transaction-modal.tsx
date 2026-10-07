@@ -60,7 +60,9 @@ export function ManualTransactionModal({
   // Divisão com amigos (Quem Me Deve)
   const [isSplit, setIsSplit] = useState(false);
   const [splitFriendName, setSplitFriendName] = useState("");
-  const [splitMode, setSplitMode] = useState<"half" | "full">("half");
+  const [splitMode, setSplitMode] = useState<"half" | "full" | "custom">("half");
+  const [customSplitType, setCustomSplitType] = useState<"percentage" | "amount">("percentage");
+  const [customSplitValue, setCustomSplitValue] = useState<string>("50");
 
   // Dados carregados do sistema
   const [categories, setCategories] = useState<Array<{ id: number; name: string }>>([]);
@@ -230,6 +232,40 @@ export function ManualTransactionModal({
       methodLabel = "Transferência / TED";
     }
 
+    // Resolução de Divisão (Split)
+    let calculatedMyShare: number | undefined = undefined;
+    let calculatedThirdPartyShare: number | undefined = undefined;
+
+    if (isSplit && splitFriendName.trim()) {
+      if (splitMode === "full") {
+        calculatedMyShare = 0;
+        calculatedThirdPartyShare = valorNumerico;
+      } else if (splitMode === "half") {
+        calculatedMyShare = Math.round((valorNumerico / 2) * 100) / 100;
+        calculatedThirdPartyShare = Math.round((valorNumerico - calculatedMyShare) * 100) / 100;
+      } else {
+        // Modo personalizado
+        if (customSplitType === "percentage") {
+          const pct = parseFloat(customSplitValue.replace(",", ".")) || 0;
+          if (pct <= 0 || pct > 100) {
+            alert("Por favor, informe uma porcentagem válida entre 1% e 100% para o amigo.");
+            return;
+          }
+          calculatedThirdPartyShare = Math.round((valorNumerico * (pct / 100)) * 100) / 100;
+          calculatedMyShare = Math.round((valorNumerico - calculatedThirdPartyShare) * 100) / 100;
+        } else {
+          // Valor fixo em R$
+          const friendVal = parseValorNumerico(customSplitValue);
+          if (friendVal <= 0 || friendVal > valorNumerico) {
+            alert(`Por favor, informe um valor para o amigo entre R$ 0,01 e R$ ${valorNumerico.toFixed(2)}.`);
+            return;
+          }
+          calculatedThirdPartyShare = Math.round(friendVal * 100) / 100;
+          calculatedMyShare = Math.round((valorNumerico - calculatedThirdPartyShare) * 100) / 100;
+        }
+      }
+    }
+
     const draft: TransactionDraft = {
       originalInput: observation.trim()
         ? `${isIncome ? "Receita" : "Gasto"} manual: ${desc} (Obs: ${observation.trim()}) de R$ ${valorNumerico.toFixed(2)}`
@@ -258,12 +294,8 @@ export function ManualTransactionModal({
       incomeType: isIncome ? incomeType : undefined,
       thirdPartyName: isSplit && splitFriendName.trim() ? splitFriendName.trim() : undefined,
       thirdPartyNames: isSplit && splitFriendName.trim() ? [splitFriendName.trim()] : undefined,
-      myShareAmount: isSplit && splitFriendName.trim()
-        ? (splitMode === "full" ? 0 : Math.round((valorNumerico / 2) * 100) / 100)
-        : undefined,
-      thirdPartyShareAmount: isSplit && splitFriendName.trim()
-        ? (splitMode === "full" ? valorNumerico : Math.round((valorNumerico - Math.round((valorNumerico / 2) * 100) / 100) * 100) / 100)
-        : undefined,
+      myShareAmount: calculatedMyShare,
+      thirdPartyShareAmount: calculatedThirdPartyShare,
       safeToSpend: {
         current: saldoAtual,
         projected: novoProjetado,
@@ -709,26 +741,156 @@ export function ManualTransactionModal({
                     className="h-10 rounded-[14px] bg-white border-black/[0.08] text-[13px] text-[#0a0a0a] px-3"
                   />
                 </div>
-                <div className="grid grid-cols-2 gap-2">
+                {/* Opções de divisão */}
+                <div className="grid grid-cols-3 gap-1.5">
                   <button
                     type="button"
                     onClick={() => setSplitMode("half")}
-                    className={`h-8 px-2 rounded-[12px] text-[12px] font-medium transition-all ${
-                      splitMode === "half" ? "bg-black text-white" : "bg-white text-[#737373] border border-black/5"
+                    className={`h-8 px-2 rounded-[12px] text-[12px] font-medium transition-all cursor-pointer ${
+                      splitMode === "half" ? "bg-black text-white" : "bg-white text-[#737373] border border-black/5 hover:text-[#0a0a0a]"
                     }`}
                   >
-                    Meio a meio (50%)
+                    50% (Meio a meio)
                   </button>
                   <button
                     type="button"
                     onClick={() => setSplitMode("full")}
-                    className={`h-8 px-2 rounded-[12px] text-[12px] font-medium transition-all ${
-                      splitMode === "full" ? "bg-black text-white" : "bg-white text-[#737373] border border-black/5"
+                    className={`h-8 px-2 rounded-[12px] text-[12px] font-medium transition-all cursor-pointer ${
+                      splitMode === "full" ? "bg-black text-white" : "bg-white text-[#737373] border border-black/5 hover:text-[#0a0a0a]"
                     }`}
                   >
-                    Amigo deve tudo (100%)
+                    100% (Amigo paga)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSplitMode("custom");
+                      if (!customSplitValue) setCustomSplitValue("50");
+                    }}
+                    className={`h-8 px-2 rounded-[12px] text-[12px] font-medium transition-all cursor-pointer ${
+                      splitMode === "custom" ? "bg-black text-white" : "bg-white text-[#737373] border border-black/5 hover:text-[#0a0a0a]"
+                    }`}
+                  >
+                    Personalizado
                   </button>
                 </div>
+
+                {/* Bloco de personalização livre */}
+                {splitMode === "custom" && (
+                  <div className="flex flex-col gap-2 p-2.5 rounded-[16px] bg-white border border-black/[0.06] animate-in fade-in duration-150">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-medium text-[#737373]">
+                        Parte do amigo por:
+                      </span>
+                      <div className="flex items-center bg-[#f5f5f5] p-0.5 rounded-[10px]">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomSplitType("percentage");
+                            setCustomSplitValue("50");
+                          }}
+                          className={`px-2.5 py-1 text-[11px] font-medium rounded-[8px] transition-all cursor-pointer ${
+                            customSplitType === "percentage" ? "bg-white text-black shadow-xs font-semibold" : "text-[#737373]"
+                          }`}
+                        >
+                          % Porcentagem
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCustomSplitType("amount");
+                            const total = parseValorNumerico(amountStr);
+                            const metade = total > 0 ? (total / 2).toFixed(2).replace(".", ",") : "";
+                            setCustomSplitValue(metade);
+                          }}
+                          className={`px-2.5 py-1 text-[11px] font-medium rounded-[8px] transition-all cursor-pointer ${
+                            customSplitType === "amount" ? "bg-white text-black shadow-xs font-semibold" : "text-[#737373]"
+                          }`}
+                        >
+                          R$ Valor Fixo
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                      <div className="relative flex-1">
+                        {customSplitType === "amount" && (
+                          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-[12px] font-medium text-[#737373]">
+                            R$
+                          </span>
+                        )}
+                        <Input
+                          type={customSplitType === "percentage" ? "number" : "text"}
+                          min={customSplitType === "percentage" ? 1 : undefined}
+                          max={customSplitType === "percentage" ? 100 : undefined}
+                          placeholder={customSplitType === "percentage" ? "Ex: 40" : "0,00"}
+                          value={customSplitValue}
+                          onChange={(e) => {
+                            if (customSplitType === "amount") {
+                              const digits = e.target.value.replace(/\D/g, "");
+                              if (!digits) {
+                                setCustomSplitValue("");
+                                return;
+                              }
+                              const num = parseFloat(digits) / 100;
+                              setCustomSplitValue(num.toLocaleString("pt-BR", { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+                            } else {
+                              setCustomSplitValue(e.target.value);
+                            }
+                          }}
+                          className={`h-9 rounded-[12px] bg-[#fafafa] border-black/[0.08] text-[13px] text-[#0a0a0a] ${
+                            customSplitType === "amount" ? "pl-8 pr-3" : "px-3"
+                          }`}
+                        />
+                      </div>
+                      {customSplitType === "percentage" && (
+                        <span className="text-[13px] font-medium text-[#737373]">% do total</span>
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {/* Resumo da Divisão em Tempo Real */}
+                {(() => {
+                  const total = parseValorNumerico(amountStr) || 0;
+                  if (total <= 0) return null;
+
+                  let friendAmt = 0;
+                  if (splitMode === "full") {
+                    friendAmt = total;
+                  } else if (splitMode === "half") {
+                    friendAmt = Math.round((total / 2) * 100) / 100;
+                  } else {
+                    if (customSplitType === "percentage") {
+                      const pct = parseFloat(customSplitValue.replace(",", ".")) || 0;
+                      friendAmt = Math.round((total * (pct / 100)) * 100) / 100;
+                    } else {
+                      friendAmt = parseValorNumerico(customSplitValue) || 0;
+                    }
+                  }
+                  friendAmt = Math.max(0, Math.min(total, friendAmt));
+                  const myAmt = Math.round((total - friendAmt) * 100) / 100;
+                  const friendPct = total > 0 ? Math.round((friendAmt / total) * 100) : 0;
+                  const myPct = 100 - friendPct;
+
+                  const nomeAmigo = splitFriendName.trim() || "Amigo";
+
+                  return (
+                    <div className="flex items-center justify-between p-2.5 rounded-[14px] bg-[#f0f9ff] border border-sky-100 text-[12px]">
+                      <div className="flex flex-col">
+                        <span className="text-sky-900 font-semibold">
+                          Sua parte: R$ {myAmt.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} ({myPct}%)
+                        </span>
+                        <span className="text-sky-700 text-[11px]">
+                          {nomeAmigo} deve: R$ {friendAmt.toLocaleString("pt-BR", { minimumFractionDigits: 2 })} ({friendPct}%)
+                        </span>
+                      </div>
+                      <span className="material-symbols-outlined text-[18px] text-sky-600">
+                        pie_chart
+                      </span>
+                    </div>
+                  );
+                })()}
               </div>
             )}
           </div>

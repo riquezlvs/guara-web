@@ -523,6 +523,55 @@ export function ReviewModal({ draft: initialDraft, isOpen, onClose, onSuccess }:
                   </div>
                 )}
 
+                {/* Ajuste de Divisão com Amigo (Se houver terceiro) */}
+                {!isIncome && (draft.thirdPartyNames?.length || draft.thirdPartyName) && (
+                  <div className="flex flex-col gap-2 p-2.5 rounded-[12px] bg-white border border-black/5">
+                    <span className="text-[11px] font-semibold text-[#0a0a0a]">
+                      Ajustar Divisão ({draft.thirdPartyNames?.join(", ") || draft.thirdPartyName})
+                    </span>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex flex-col gap-0.5">
+                        <label className="text-[10px] uppercase font-medium text-[#737373]">Sua parte (R$)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={draft.myShareAmount ?? ""}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            const safeMy = Math.max(0, Math.min(draft.totalAmount, val));
+                            const safeThird = Math.round((draft.totalAmount - safeMy) * 100) / 100;
+                            setDraft((prev) => ({
+                              ...prev,
+                              myShareAmount: safeMy,
+                              thirdPartyShareAmount: safeThird,
+                            }));
+                          }}
+                          className="bg-[#fafafa] h-8 text-[12px] rounded-[8px]"
+                        />
+                      </div>
+                      <div className="flex flex-col gap-0.5">
+                        <label className="text-[10px] uppercase font-medium text-[#737373]">Amigo deve (R$)</label>
+                        <Input
+                          type="number"
+                          step="0.01"
+                          value={draft.thirdPartyShareAmount ?? ""}
+                          onChange={(e) => {
+                            const val = parseFloat(e.target.value) || 0;
+                            const safeThird = Math.max(0, Math.min(draft.totalAmount, val));
+                            const safeMy = Math.round((draft.totalAmount - safeThird) * 100) / 100;
+                            setDraft((prev) => ({
+                              ...prev,
+                              thirdPartyShareAmount: safeThird,
+                              myShareAmount: safeMy,
+                            }));
+                          }}
+                          className="bg-[#fafafa] h-8 text-[12px] rounded-[8px]"
+                        />
+                      </div>
+                    </div>
+                  </div>
+                )}
+
                 {/* Refinamento com IA */}
                 <div className="flex flex-col gap-1 pt-1 border-t border-black/5">
                   <label className="text-[10px] uppercase font-medium text-[#737373]">
